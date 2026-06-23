@@ -21,11 +21,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function loadProfile(u: User | null) {
     if (!u) { setProfile(null); setLoading(false); return; }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("id, display_name, email, role, created_at")
       .eq("id", u.id)
       .single();
+    console.log("[AuthProvider] profile data:", data, "error:", error);
     setProfile(data as Profile | null);
     setLoading(false);
   }
