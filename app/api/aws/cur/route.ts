@@ -31,12 +31,25 @@ export async function GET() {
  * Alternatively: body can contain the raw CSV text as { csv: "..." }.
  */
 export async function POST(req: NextRequest) {
-  const body = await req.json();
   const admin = getAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  let rows: Record<string, string>[] = body.rows ?? [];
-  const filename: string = body.filename ?? null;
+  const contentType = req.headers.get("content-type") ?? "";
+  let rows: Record<string, string>[] = [];
+  let filename: string | null = null;
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
+    if (!file) return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    filename = file.name;
+    const text = await file.text();
+    rows = parseCsv(text);
+  } else {
+    const body = await req.json();
+    rows = body.rows ?? [];
+    filename = body.filename ?? null;
+  }
 
   // Load all active workloads for name matching
   const { data: workloads } = await admin
@@ -150,8 +163,8 @@ export async function POST(req: NextRequest) {
   // Save upload record
   const { data: upload, error } = await admin.from("cur_uploads").insert({
     uploaded_by: user?.id ?? null,
-    period_start: body.period_start ?? null,
-    period_end: body.period_end ?? null,
+    period_start: new Date().toISOString().slice(0, 10),
+    period_end: new Date().toISOString().slice(0, 10),
     filename,
     row_count: dataRows.length,
     processed: true,
@@ -160,6 +173,20 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ upload, workloads_updated: totals.size, rows_updated: updatedCount });
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  return lines.slice(1).map((line) => {
+    const vals = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g) ?? line.split(",");
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => {
+      row[h] = (vals[i] ?? "").trim().replace(/^"|"$/g, "");
+    });
+    return row;
+  });
 }
 
 // Inline mini version of redistributeSharedCosts to avoid ESM issues in API route
