@@ -5,6 +5,7 @@ import { useAuth } from "@/components/aws/AuthProvider";
 import { useRouter } from "next/navigation";
 import { FySelector } from "@/components/aws/FySelector";
 import { ConsumptionChart } from "@/components/aws/ConsumptionChart";
+import { TopBar } from "@/components/aws/TopBar";
 import { currentFyYear, FY_MONTH_LABELS } from "@/lib/db/aws-types";
 import type { WorkloadConsumption } from "@/lib/db/aws-types";
 import Link from "next/link";
@@ -73,18 +74,9 @@ export default function DashboardPage() {
   const fyLabel = `FY${String(fyYear + 1).slice(-2)}`;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {isAdmin ? "All Workloads" : "My Workloads"} — {fyLabel}
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            AWS consumption Jul {fyYear} – Jun {fyYear + 1}
-          </p>
-        </div>
-        <FySelector value={fyYear} onChange={setFyYear} />
-      </div>
+    <div className="flex flex-col min-h-screen">
+      <TopBar fyLabel={fyLabel} fySelector={<FySelector value={fyYear} onChange={setFyYear} />} />
+      <div className="flex-1 p-8 space-y-6">
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -145,6 +137,7 @@ export default function DashboardPage() {
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 }
