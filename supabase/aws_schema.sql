@@ -26,15 +26,18 @@ create trigger on_auth_user_created
 -- ── Workloads ────────────────────────────────────────────────
 -- Workloads from the Exclusion tab; everything not listed here = "Others"
 create table if not exists public.workloads (
-  id            bigserial primary key,
-  name          text not null unique,
-  owner_user_id uuid references public.profiles(id) on delete set null,
-  owner_name    text,
-  owner_email   text,
-  aws_account_id text,
-  category      text,
-  is_active     boolean not null default true,
-  created_at    timestamptz default now()
+  id              bigserial primary key,
+  name            text not null unique,
+  owner_user_id   uuid references public.profiles(id) on delete set null,
+  owner_name      text,
+  owner_email     text,
+  aws_account_id  text,
+  category        text,
+  -- true = shared networking workload (AWS Networks, Billing, Network F5, Network Firewall)
+  -- their monthly costs are distributed proportionally across all non-networking workloads
+  is_networking   boolean not null default false,
+  is_active       boolean not null default true,
+  created_at      timestamptz default now()
 );
 
 -- ── Monthly Workload Consumption ─────────────────────────────

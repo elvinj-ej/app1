@@ -155,52 +155,85 @@ export async function upsertInvoiceAdjustment(ia: Omit<InvoiceAdjustment, "id" |
     .single();
 }
 
-// ── Redistribute networking & adjustment shares ───────────────
-// Call after updating networking costs or invoice adjustments
-// to recompute proportional splits across workloads for a given month.
+// ── Redistribute shared networking & invoice adjustment shares ──
+// The 4 networking workloads (is_networking=true: AWS Networks, Billing,
+// Network F5, Network Firewall) have their monthly CUR costs treated as
+// shared infrastructure. After CUR import or manual update, call this to:
+//   1. Sum the networking workloads' actual/forecast for the month
+//   2. Distribute that total proportionally across all NON-networking workloads
+//   3. Also distribute the global invoice adjustment (row 16 in Excel) proportionally
 export async function redistributeSharedCosts(fyYear: number, monthInFy: number) {
   const admin = getAdminClient();
 
-  // Get all active workloads' monthly data for the period
+  // Identify networking vs regular workloads
+  const { data: allWorkloads } = await admin
+    .from("workloads")
+    .select("id, is_networking")
+    .eq("is_active", true);
+
+  const networkingIds = new Set((allWorkloads ?? []).filter((w: { is_networking: boolean }) => w.is_networking).map((w: { id: number }) => w.id));
+  const regularIds = new Set((allWorkloads ?? []).filter((w: { is_networking: boolean }) => !w.is_networking).map((w: { id: number }) => w.id));
+
+  // Get all monthly rows for the period
   const { data: rows } = await admin
     .from("workload_monthly")
-    .select("id, workload_id, forecast_amount, invoiced_amount")
+    .select("id, workload_id, cur_amount, forecast_amount, invoiced_amount")
     .eq("fy_year", fyYear)
     .eq("month_in_fy", monthInFy);
 
   if (!rows?.length) return;
 
-  // Get total networking for this period
+  // Sum networking workloads' effective cost (invoiced if available, else CUR, else forecast)
+  const networkingRows = (rows ?? []).filter((r: { workload_id: number }) => networkingIds.has(r.workload_id));
+  const totalNetworking = networkingRows.reduce(
+    (s: number, r: { invoiced_amount: number | null; cur_amount: number; forecast_amount: number }) =>
+      s + (r.invoiced_amount ?? r.cur_amount ?? r.forecast_amount ?? 0), 0
+  );
+
+  // Also add any manual networking_costs entries (legacy / override)
   const { data: netRows } = await admin
     .from("networking_costs")
     .select("amount")
     .eq("fy_year", fyYear)
     .eq("month_in_fy", monthInFy);
+  const manualNetworking = (netRows ?? []).reduce((s: number, r: { amount: number }) => s + (r.amount ?? 0), 0);
 
-  const totalNetworking = (netRows ?? []).reduce((s, r) => s + (r.amount ?? 0), 0);
+  const totalSharedNetworking = totalNetworking + manualNetworking;
 
-  // Get invoice adjustment
+  // Get invoice adjustment (row 16 in Excel: total Telstra invoice diff for the month)
   const { data: adjRow } = await admin
     .from("invoice_adjustments")
     .select("amount")
     .eq("fy_year", fyYear)
     .eq("month_in_fy", monthInFy)
-    .single();
-
+    .maybeSingle();
   const totalAdjustment = adjRow?.amount ?? 0;
 
-  // Proportional split by effective consumption
-  const totalConsumption = rows.reduce(
-    (s, r) => s + (r.invoiced_amount ?? r.forecast_amount ?? 0), 0
+  // Distribute proportionally across regular (non-networking) workloads by their consumption
+  const regularRows = (rows ?? []).filter((r: { workload_id: number }) => regularIds.has(r.workload_id));
+  const totalBaseConsumption = regularRows.reduce(
+    (s: number, r: { invoiced_amount: number | null; cur_amount: number; forecast_amount: number }) =>
+      s + (r.invoiced_amount ?? r.cur_amount ?? r.forecast_amount ?? 0), 0
   );
 
-  for (const row of rows) {
-    const base = row.invoiced_amount ?? row.forecast_amount ?? 0;
-    const ratio = totalConsumption > 0 ? base / totalConsumption : 1 / rows.length;
+  for (const row of regularRows) {
+    const base = (row as { invoiced_amount: number | null; cur_amount: number; forecast_amount: number }).invoiced_amount
+      ?? (row as { cur_amount: number }).cur_amount
+      ?? (row as { forecast_amount: number }).forecast_amount ?? 0;
+    const ratio = totalBaseConsumption > 0 ? base / totalBaseConsumption : 1 / regularRows.length;
     await admin.from("workload_monthly").update({
-      networking_share: parseFloat((totalNetworking * ratio).toFixed(2)),
+      networking_share: parseFloat((totalSharedNetworking * ratio).toFixed(2)),
       invoice_adjustment_share: parseFloat((totalAdjustment * ratio).toFixed(2)),
       updated_at: new Date().toISOString(),
-    }).eq("id", row.id);
+    }).eq("id", (row as { id: number }).id);
+  }
+
+  // Networking workloads get 0 allocation (they ARE the shared cost)
+  for (const row of networkingRows) {
+    await admin.from("workload_monthly").update({
+      networking_share: 0,
+      invoice_adjustment_share: 0,
+      updated_at: new Date().toISOString(),
+    }).eq("id", (row as { id: number }).id);
   }
 }

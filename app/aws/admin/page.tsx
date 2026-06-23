@@ -130,16 +130,22 @@ function WorkloadsTab() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Owner</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Category</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Type</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">AWS Account</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {workloads.map((w) => (
-              <tr key={w.id} className="hover:bg-gray-50">
+              <tr key={w.id} className={(w as unknown as { is_networking: boolean }).is_networking ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-gray-50"}>
                 <td className="px-4 py-2.5 font-medium text-gray-900">{w.name}</td>
                 <td className="px-4 py-2.5 text-gray-600">{w.owner_name ?? "—"} {w.owner_email ? `<${w.owner_email}>` : ""}</td>
                 <td className="px-4 py-2.5 text-gray-500">{w.category ?? "—"}</td>
+                <td className="px-4 py-2.5">
+                  {(w as unknown as { is_networking: boolean }).is_networking
+                    ? <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Shared Networking</span>
+                    : <span className="text-xs text-gray-400">Workload</span>}
+                </td>
                 <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{w.aws_account_id ?? "—"}</td>
                 <td className="px-4 py-2.5 text-right">
                   <button onClick={() => deactivate(w.id)} className="text-red-500 text-xs hover:underline">Deactivate</button>
@@ -257,7 +263,10 @@ function ForecastTab({ fyYear }: { fyYear: number }) {
 // ── Networking Tab ────────────────────────────────────────────
 
 function NetworkingTab({ fyYear }: { fyYear: number }) {
-  const LINES = ["Transit Gateway", "VPN / Direct Connect", "Data Transfer Out", "Other Networking"];
+  // The 4 shared networking workloads (rows 17-20 in AWS_Run Cost Excel tab).
+  // Their CUR amounts are populated automatically during CUR import.
+  // Use this tab only if you need to enter amounts manually (override).
+  const LINES = ["AWS Networks", "Billing", "Network F5", "Network Firewall"];
   const [amounts, setAmounts] = useState<Record<string, Record<number, string>>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -308,9 +317,17 @@ function NetworkingTab({ fyYear }: { fyYear: number }) {
   return (
     <div className="bg-white rounded-xl shadow p-6 space-y-4">
       <h2 className="font-semibold text-gray-800">Shared Networking Costs — {fyLabel}</h2>
-      <p className="text-sm text-gray-500">
-        Enter the 4 networking line items (rows A17–A20 in Excel). These will be distributed proportionally across workloads each month.
-      </p>
+      <div className="text-sm text-gray-500 space-y-1">
+        <p>
+          These are the 4 shared networking workloads (rows 17–20 in the AWS_Run Cost Excel tab):
+          <strong> AWS Networks, Billing, Network F5, Network Firewall</strong>.
+        </p>
+        <p>
+          Their CUR amounts are imported automatically during CUR upload and distributed proportionally
+          across all other workloads. Use this table only to <em>manually override</em> monthly amounts
+          (e.g. before CUR data is available).
+        </p>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="text-sm w-full">
@@ -532,7 +549,7 @@ function CurUploadTab() {
   useEffect(() => { loadUploads(); }, []);
 
   async function upload() {
-    if (!file || !periodStart || !periodEnd) return;
+    if (!file) return;
     setUploading(true);
     setError("");
     setResult("");
@@ -540,26 +557,43 @@ function CurUploadTab() {
     const text = await file.text();
     let rows: Record<string, string>[] = [];
 
-    // Parse CSV
-    const lines = text.split("\n").filter((l) => l.trim());
-    if (lines.length > 1) {
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-      rows = lines.slice(1).map((line) => {
-        const vals = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
-        return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? ""]));
-      });
+    // Parse CSV — handle quoted fields
+    function parseCsvLine(line: string): string[] {
+      const result: string[] = [];
+      let cur = "", inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; }
+        else if (ch === "," && !inQuotes) { result.push(cur.trim()); cur = ""; }
+        else { cur += ch; }
+      }
+      result.push(cur.trim());
+      return result;
     }
 
-    // Normalise: expect columns "workload_name" (or "lineItem/ProductCode") and "amount" (or "lineItem/UnblendedCost")
-    const normalised = rows.map((r) => ({
-      workload_name: r["workload_name"] ?? r["product/ProductName"] ?? r["lineItem/ProductCode"] ?? r["WorkloadName"] ?? "",
-      amount: r["amount"] ?? r["lineItem/UnblendedCost"] ?? r["Cost"] ?? "0",
-    })).filter((r) => r.workload_name);
+    const lines = text.split("\n").filter((l) => l.trim());
+    if (lines.length > 1) {
+      const headers = parseCsvLine(lines[0]).map((h) => h.replace(/^"|"$/g, ""));
+      // Skip summary rows (rows where category = forecast/sum_monthly_expense/sum_marketplace)
+      const SKIP = new Set(["forecast", "sum_monthly_expense", "sum_marketplace"]);
+      const catIdx = headers.indexOf("category");
+      rows = lines.slice(1)
+        .map((l) => {
+          const vals = parseCsvLine(l).map((v) => v.replace(/^"|"$/g, ""));
+          return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? ""]));
+        })
+        .filter((r) => !SKIP.has(r.category));
+    }
 
     const res = await fetch("/api/aws/cur", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: file.name, period_start: periodStart, period_end: periodEnd, rows: normalised }),
+      body: JSON.stringify({
+        filename: file.name,
+        period_start: periodStart || null,
+        period_end: periodEnd || null,
+        rows,
+      }),
     });
 
     if (!res.ok) {
@@ -567,7 +601,7 @@ function CurUploadTab() {
       setError(d.error ?? "Upload failed");
     } else {
       const d = await res.json();
-      setResult(`Uploaded successfully. ${d.workloads_updated} workloads updated.`);
+      setResult(`Uploaded successfully. ${d.workloads_updated} workloads updated across ${d.rows_updated} month-workload combinations.`);
       await loadUploads();
     }
     setUploading(false);
@@ -576,24 +610,35 @@ function CurUploadTab() {
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="font-semibold text-gray-800 mb-2">Upload AWS CUR File</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Upload a bi-weekly CUR CSV file. The file must have columns: <code className="bg-gray-100 px-1 rounded">workload_name</code> and <code className="bg-gray-100 px-1 rounded">amount</code> (or standard AWS CUR column names).
-          Workloads not in the exclusion list will be aggregated under "Others".
-        </p>
+        <h2 className="font-semibold text-gray-800 mb-2">Upload AWS CUR File (AWSCUR tab)</h2>
+        <div className="text-sm text-gray-500 mb-4 space-y-1">
+          <p>
+            Export the <strong>AWSCUR</strong> sheet from the Excel tracker as CSV and upload here.
+            The file should have columns: <code className="bg-gray-100 px-1 rounded">account_id</code>,{" "}
+            <code className="bg-gray-100 px-1 rounded">account_name</code>,{" "}
+            <code className="bg-gray-100 px-1 rounded">workloads_tag</code>,{" "}
+            <code className="bg-gray-100 px-1 rounded">outcomegroup_tag</code>,{" "}
+            <code className="bg-gray-100 px-1 rounded">category</code>,
+            then monthly columns with Excel date serial numbers as headers.
+          </p>
+          <p>
+            Workloads not in the Exclusion list (e.g. CCI, CSP Sandbox, Sandbox) are aggregated under <strong>Others</strong>.
+            After upload, the 4 networking workloads&apos; costs are automatically distributed proportionally across all other workloads.
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">CUR File (CSV)</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">CUR CSV File *</label>
             <input type="file" accept=".csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Period Start</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Period Start (optional)</label>
             <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)}
               className="border rounded px-2 py-1.5 text-sm w-full" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Period End</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Period End (optional)</label>
             <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)}
               className="border rounded px-2 py-1.5 text-sm w-full" />
           </div>
@@ -604,10 +649,10 @@ function CurUploadTab() {
 
         <button
           onClick={upload}
-          disabled={uploading || !file || !periodStart || !periodEnd}
+          disabled={uploading || !file}
           className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
         >
-          {uploading ? "Uploading…" : "Upload CUR"}
+          {uploading ? "Uploading & processing…" : "Upload CUR"}
         </button>
       </div>
 
