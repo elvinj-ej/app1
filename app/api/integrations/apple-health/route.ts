@@ -3,6 +3,7 @@ import {
   parseAppleHealthPayload,
   verifyWebhookSecret,
 } from "@/lib/integrations/apple-health";
+import { upsertBodyWeight } from "@/lib/db/persist";
 
 /**
  * POST /api/integrations/apple-health
@@ -28,8 +29,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const entries = parseAppleHealthPayload(body);
 
-    // TODO: persist `entries` to your database here
-    // e.g. await db.bodyWeight.upsertMany(entries)
+    // userId comes from a query param or auth header in production
+    // For now we require ?userId=<uuid> on the webhook URL
+    const userId = new URL(req.url).searchParams.get("userId");
+    if (userId) {
+      await upsertBodyWeight(userId, entries);
+    }
 
     return NextResponse.json({
       received: entries.length,

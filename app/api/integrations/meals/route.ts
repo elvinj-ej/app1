@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyseFromBase64, analyseFromUrl } from "@/lib/integrations/meal-vision";
+import { insertMeal } from "@/lib/db/persist";
 
 /**
  * POST /api/integrations/meals
@@ -30,10 +31,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // TODO: persist meal entry + estimate to your database here
-    // e.g. await db.meals.create({ ...estimate, userId, loggedAt: new Date() })
+    const userId = body.userId as string | undefined;
+    let saved = null;
+    if (userId) {
+      saved = await insertMeal(userId, estimate, body.photoUrl);
+    }
 
-    return NextResponse.json(estimate);
+    return NextResponse.json({ ...estimate, id: (saved as { id?: number } | null)?.id ?? null });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

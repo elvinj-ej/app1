@@ -37,7 +37,7 @@ export type AppleHealthPayload = z.infer<typeof AppleHealthPayloadSchema>;
 export interface BodyWeightEntry {
   date: string;       // YYYY-MM-DD
   weightKg: number;
-  source: "apple_health";
+  source: "apple_health" | "manual" | "garmin";
 }
 
 export function parseAppleHealthPayload(raw: unknown): BodyWeightEntry[] {
@@ -63,7 +63,7 @@ export function parseAppleHealthPayload(raw: unknown): BodyWeightEntry[] {
       entries.push({
         date: sample.date.slice(0, 10), // trim to YYYY-MM-DD
         weightKg: Math.round(weightKg * 100) / 100,
-        source: "apple_health",
+        source: "apple_health" as const,
       });
     }
   }

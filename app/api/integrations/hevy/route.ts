@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkouts, getWorkoutsSince, summariseVolume } from "@/lib/integrations/hevy";
+import { upsertWorkouts } from "@/lib/db/persist";
 
 /**
  * GET /api/integrations/hevy?page=1&pageSize=10       → paginated workouts
@@ -16,6 +17,8 @@ export async function GET(req: NextRequest) {
 
     if (since) {
       const workouts = await getWorkoutsSince(since);
+      const userId = searchParams.get("userId");
+      if (userId && workouts.length > 0) await upsertWorkouts(userId, workouts);
       const data = summary
         ? workouts.map((w) => ({ ...w, volume: summariseVolume(w) }))
         : workouts;
