@@ -70,7 +70,7 @@ def _parse_excel(path: str):
         data_rows.append({
             "account_id":    account_id,
             "account_name":  (row[1] or "").strip(),
-            "workloads_tag": (row[2] or "").strip() or None,
+            "workloads_tag": (row[2] or "").strip(),
             "outcomegroup":  (row[3] or "").strip() or None,
             "category":      category,
             "amounts":       amounts,
@@ -126,7 +126,7 @@ def _parse_csv(path: str):
                 data_rows.append({
                     "account_id":    account_id,
                     "account_name":  row[1].strip() if len(row) > 1 else "",
-                    "workloads_tag": row[2].strip() if len(row) > 2 else None,
+                    "workloads_tag": row[2].strip() if len(row) > 2 else "",
                     "outcomegroup":  row[3].strip() if len(row) > 3 else None,
                     "category":      category,
                     "amounts":       amounts,
@@ -164,7 +164,7 @@ def ingest_cur(path: str, uploaded_by: str = "") -> dict:
                     INSERT INTO cur_data
                         (account_id, account_name, workloads_tag, outcomegroup, category, month, amount)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(account_id, COALESCE(workloads_tag,''), category, month)
+                    ON CONFLICT(account_id, workloads_tag, category, month)
                     DO UPDATE SET amount       = excluded.amount,
                                   account_name = excluded.account_name,
                                   outcomegroup = excluded.outcomegroup

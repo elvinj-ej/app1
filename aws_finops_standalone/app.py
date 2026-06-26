@@ -552,7 +552,7 @@ def api_cur_tags():
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT DISTINCT workloads_tag FROM cur_data "
-            "WHERE workloads_tag IS NOT NULL ORDER BY workloads_tag"
+            "WHERE workloads_tag != '' ORDER BY workloads_tag"
         ).fetchall()
     return jsonify({"tags": [r["workloads_tag"] for r in rows]})
 

@@ -48,7 +48,8 @@ def get_monthly_input(month: str) -> dict:
 def compute_run_cost(month: str) -> dict[str, Any]:
     with get_conn() as conn:
         cur_rows = conn.execute("""
-            SELECT COALESCE(workloads_tag,'__untagged__') AS tag, SUM(amount) AS actual
+            SELECT CASE WHEN workloads_tag='' THEN '__untagged__' ELSE workloads_tag END AS tag,
+                   SUM(amount) AS actual
             FROM cur_data
             WHERE month=? AND category='monthly_expense'
             GROUP BY workloads_tag

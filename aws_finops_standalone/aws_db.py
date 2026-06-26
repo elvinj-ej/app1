@@ -29,13 +29,12 @@ def init_db():
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id    TEXT    NOT NULL,
             account_name  TEXT,
-            workloads_tag TEXT,
+            workloads_tag TEXT    NOT NULL DEFAULT '',
             outcomegroup  TEXT,
             category      TEXT    NOT NULL,
             month         TEXT    NOT NULL,
             amount        REAL    NOT NULL DEFAULT 0,
-            UNIQUE(account_id, COALESCE(workloads_tag,''), category, month)
-            ON CONFLICT REPLACE
+            UNIQUE(account_id, workloads_tag, category, month)
         );
         CREATE INDEX IF NOT EXISTS idx_cur_month    ON cur_data(month);
         CREATE INDEX IF NOT EXISTS idx_cur_workload ON cur_data(workloads_tag);
