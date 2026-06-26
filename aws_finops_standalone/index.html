@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AWS FinOps Tracker — Cochlear Hosting</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --yellow:    #F0A500;
+      --yellow-lt: #FEF3D9;
+      --charcoal:  #2B3752;
+      --bg:        #F7F7F5;
+      --surface:   #FFFFFF;
+      --border:    #DDD9D4;
+      --text:      #2B3752;
+      --muted:     #6B7280;
+      --green:     #1a6b2a;
+      --green-bg:  #EAF6EE;
+      --green-bd:  #A8D8B8;
+      --red:       #7A1A1A;
+      --red-bg:    #FDF0EE;
+      --red-bd:    #ECC0B8;
+      --shadow:    0 4px 16px rgba(43,55,82,.10), 0 2px 6px rgba(43,55,82,.05);
+    }
+    body { font-family:'Calibri','Segoe UI',Arial,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.5; }
+
+    /* HEADER */
+    .header { background:var(--charcoal); height:60px; display:flex; align-items:center; justify-content:space-between; padding:0 32px; position:sticky; top:0; z-index:50; box-shadow:0 2px 8px rgba(0,0,0,.18); }
+    .logo { display:flex; align-items:center; gap:14px; text-decoration:none; }
+    .logo-circle { width:34px; height:34px; border-radius:50%; background:var(--yellow); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:16px; color:var(--charcoal); flex-shrink:0; }
+    .logo-divider { width:1px; height:22px; background:rgba(255,255,255,.25); }
+    .logo-title { font-size:15px; font-weight:700; color:#fff; line-height:1.2; }
+    .logo-sub   { font-size:11px; color:rgba(255,255,255,.6); }
+    .header-right { display:flex; align-items:center; gap:12px; }
+    .user-badge { display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:20px; padding:4px 12px 4px 8px; }
+    .user-avatar { width:26px; height:26px; border-radius:50%; background:var(--yellow); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; color:var(--charcoal); }
+    .user-name { font-size:12px; font-weight:600; color:rgba(255,255,255,.9); }
+    .btn-logout { font-size:12px; color:rgba(255,255,255,.65); text-decoration:none; padding:4px 12px; border:1px solid rgba(255,255,255,.2); border-radius:6px; }
+    .btn-logout:hover { background:rgba(255,255,255,.1); color:#fff; }
+
+    /* PAGE */
+    .page { max-width:1600px; margin:0 auto; padding:32px 24px 64px; }
+    .page-title { margin-bottom:24px; }
+    .page-title h1 { font-size:20px; font-weight:700; color:var(--charcoal); margin-bottom:4px; }
+    .page-title p  { font-size:13px; color:var(--muted); max-width:860px; }
+
+    /* TABS */
+    .tab-bar { display:flex; border-bottom:2px solid var(--border); }
+    .tab-btn { padding:10px 24px; font-size:14px; font-weight:700; color:var(--muted); background:none; border:none; border-bottom:3px solid transparent; margin-bottom:-2px; cursor:pointer; font-family:inherit; transition:color .15s,border-color .15s; }
+    .tab-btn:hover { color:var(--charcoal); }
+    .tab-btn.active { color:var(--charcoal); border-bottom-color:var(--yellow); }
+    .card { background:var(--surface); border-radius:0 0 10px 10px; box-shadow:var(--shadow); padding:36px 44px; border:1px solid var(--border); border-top:none; }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+
+    /* TOOLBAR */
+    .toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:24px; }
+    .toolbar-left h2 { font-size:15px; font-weight:700; color:var(--charcoal); }
+    .toolbar-left p  { font-size:12px; color:var(--muted); margin-top:3px; }
+
+    /* BUTTONS */
+    .btn { padding:8px 18px; background:var(--yellow); color:var(--charcoal); border:none; border-radius:6px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; white-space:nowrap; transition:filter .15s; }
+    .btn:hover:not(:disabled) { filter:brightness(1.06); }
+    .btn:disabled { background:#e5c875; cursor:not-allowed; }
+    .btn-sm { padding:5px 12px; font-size:12px; }
+    .btn-outline { background:#fff; border:1px solid var(--border); color:var(--text); }
+    .btn-outline:hover { background:var(--bg); }
+    .btn-danger { background:var(--red-bg); border:1px solid var(--red-bd); color:var(--red); }
+    .btn-danger:hover { background:#f5c6c6; }
+
+    /* DROP ZONE */
+    .drop-zone { border:2px dashed var(--border); border-radius:8px; padding:52px 20px; text-align:center; cursor:pointer; background:var(--bg); margin-bottom:20px; transition:border-color .2s,background .2s; }
+    .drop-zone:hover,.drop-zone.over { border-color:var(--yellow); background:var(--yellow-lt); }
+    .drop-zone .icon { font-size:2.5rem; display:block; margin-bottom:12px; }
+    .drop-zone p { font-size:13px; color:var(--muted); }
+    .drop-zone .hint { font-size:11px; color:#aaa; margin-top:4px; }
+    #cur-input { display:none; }
+
+    /* ALERTS */
+    .alert { padding:12px 16px; border-radius:6px; font-size:13px; margin-bottom:16px; line-height:1.6; }
+    .alert-ok   { background:var(--green-bg); color:var(--green); border:1px solid var(--green-bd); }
+    .alert-err  { background:var(--red-bg);   color:var(--red);   border:1px solid var(--red-bd); }
+    .alert-info { background:#EFF6FF; color:#1e40af; border:1px solid #bfdbfe; }
+
+    /* MONTH PILLS */
+    .month-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:24px; }
+    .month-label { font-size:12px; color:var(--muted); margin-right:4px; }
+    .mpill { padding:5px 14px; border-radius:20px; font-size:12px; font-weight:600; border:1.5px solid var(--border); background:#fff; cursor:pointer; color:var(--muted); transition:border-color .15s,background .15s; }
+    .mpill.active { background:var(--charcoal); color:#fff; border-color:var(--charcoal); }
+    .mpill:hover:not(.active) { border-color:var(--yellow); color:var(--charcoal); }
+
+    /* INPUTS PANEL */
+    .inputs-panel { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:20px 24px; margin-bottom:24px; }
+    .inputs-panel-title { font-size:13px; font-weight:700; color:var(--charcoal); margin-bottom:14px; }
+    .inputs-grid { display:grid; grid-template-columns:1fr 1fr auto; gap:16px; align-items:end; }
+    .field-group label { display:block; font-size:11px; font-weight:700; color:var(--charcoal); opacity:.75; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px; }
+    input[type="number"],input[type="text"] { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; color:var(--text); background:#fff; outline:none; }
+    input:focus { border-color:var(--yellow); box-shadow:0 0 0 3px rgba(240,165,0,.15); }
+    .save-tick { font-size:12px; color:var(--green); margin-left:8px; display:none; }
+
+    /* KPI CARDS */
+    .kpi-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
+    .kpi { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px 20px; min-width:170px; }
+    .kpi-lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
+    .kpi-val { font-size:18px; font-weight:700; color:var(--charcoal); }
+    .kpi-val.pos { color:var(--green); }
+    .kpi-val.neg { color:var(--red); }
+    .kpi-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+
+    /* TABLE */
+    .tbl-wrap { overflow-x:auto; border-radius:8px; border:1px solid var(--border); }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th { padding:10px 12px; background:var(--charcoal); color:#fff; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; text-align:left; }
+    td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:var(--yellow-lt); }
+    .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .pos { color:var(--green); font-weight:700; }
+    .neg { color:var(--red); font-weight:700; }
+    .row-other td { background:var(--bg); color:var(--muted); font-style:italic; }
+    .row-total td { background:var(--charcoal); color:#fff; font-weight:700; }
+    .row-total td.pos { color:#a3e4b5; }
+    .row-total td.neg { color:#f9b4b4; }
+    .row-other:hover td,.row-total:hover td { filter:brightness(.97); }
+
+    /* MODAL */
+    .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:200; align-items:center; justify-content:center; }
+    .modal-bg.open { display:flex; }
+    .modal { background:#fff; border-radius:10px; padding:32px 36px; width:100%; max-width:520px; box-shadow:0 8px 32px rgba(0,0,0,.18); }
+    .modal h3 { font-size:16px; font-weight:700; margin-bottom:20px; color:var(--charcoal); }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+    .mb16 { margin-bottom:16px; }
+    .modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+    .tag-chip { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; background:var(--yellow-lt); border:1px solid #f0d080; cursor:pointer; margin:3px; }
+    .tag-chip:hover { background:var(--yellow); }
+
+    /* MISC */
+    .empty { text-align:center; color:var(--muted); padding:48px; font-size:13px; }
+    .loading { text-align:center; color:var(--muted); padding:32px; font-size:13px; }
+    .section-title { font-size:14px; font-weight:700; color:var(--charcoal); margin-bottom:14px; }
+    .footer { margin-top:24px; font-size:11px; color:#aaa; text-align:center; }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div class="logo-circle">C</div>
+    <div class="logo-divider"></div>
+    <div>
+      <div class="logo-title">AWS FinOps Tracker</div>
+      <div class="logo-sub">Cochlear — Hosting Engineering</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="user-badge">
+      <div class="user-avatar" id="user-avatar">{{ display_name[0]|upper if display_name else '?' }}</div>
+      <span class="user-name">{{ display_name }}</span>
+    </div>
+    <a href="/AWSFinOps/logout" class="btn-logout">Log out</a>
+  </div>
+</header>
+
+<div class="page">
+  <div class="page-title">
+    <h1>AWS FinOps Tracker</h1>
+    <p>Upload monthly AWS CUR data, track spend per workload, compare against Telstra invoices, and monitor budget deviation. All amounts in USD.</p>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="runcost">📊 Run Cost</button>
+    <button class="tab-btn" data-tab="upload">📤 Upload CUR</button>
+    <button class="tab-btn" data-tab="workloads">⚙️ Workloads</button>
+  </div>
+
+  <div class="card">
+
+    <!-- ── RUN COST ── -->
+    <div class="tab-panel active" id="tab-runcost">
+
+      <div class="inputs-panel" id="inputs-panel" style="display:none">
+        <div class="inputs-panel-title">Monthly inputs — <span id="inputs-month-lbl"></span></div>
+        <div class="inputs-grid">
+          <div class="field-group">
+            <label>Telstra Invoice (USD)</label>
+            <input type="number" id="inp-invoice" placeholder="e.g. 316367" step="0.01"/>
+          </div>
+          <div class="field-group">
+            <label>Latest Forecast (USD)</label>
+            <input type="number" id="inp-forecast" placeholder="e.g. 281174" step="0.01"/>
+          </div>
+          <div>
+            <button class="btn btn-sm" id="save-inputs-btn">Save</button>
+            <span class="save-tick" id="save-tick">✓ Saved</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="month-row" id="month-row">
+        <span class="month-label">Month:</span>
+        <span style="font-size:12px;color:var(--muted)">No CUR data yet — upload a file first.</span>
+      </div>
+
+      <div class="kpi-row" id="kpi-row" style="display:none">
+        <div class="kpi"><div class="kpi-lbl">Total CUR Actual</div><div class="kpi-val" id="kpi-cur">—</div><div class="kpi-sub">USD · Raw AWS spend</div></div>
+        <div class="kpi"><div class="kpi-lbl">Telstra Invoice</div><div class="kpi-val" id="kpi-inv">—</div><div class="kpi-sub">USD</div></div>
+        <div class="kpi"><div class="kpi-lbl">FinOps Total</div><div class="kpi-val" id="kpi-fin">—</div><div class="kpi-sub">USD · Actual + Telstra diff</div></div>
+        <div class="kpi"><div class="kpi-lbl">Deviation vs Forecast</div><div class="kpi-val" id="kpi-dev">—</div><div class="kpi-sub" id="kpi-fc-sub">—</div></div>
+      </div>
+
+      <div id="runcost-wrap"><div class="empty">Select a month to load the run-cost breakdown.</div></div>
+    </div>
+
+    <!-- ── UPLOAD CUR ── -->
+    <div class="tab-panel" id="tab-upload">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <h2>Upload AWS CUR File</h2>
+          <p>Pivoted Excel (.xlsx) or CSV. Same format as the AWSCUR tab. Re-uploading the same period is safe — rows are upserted.</p>
+        </div>
+      </div>
+
+      <div class="drop-zone" id="drop-zone">
+        <span class="icon">☁️</span>
+        <p><strong>Drag &amp; drop the CUR file here</strong></p>
+        <p class="hint">or click to browse — .xlsx or .csv, max 50 MB</p>
+      </div>
+      <input type="file" id="cur-input" accept=".xlsx,.xlsm,.xls,.csv"/>
+
+      <div id="upload-status"></div>
+
+      <div id="history-section" style="display:none; margin-top:28px">
+        <div class="section-title">Upload History (last 20)</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>File</th><th class="num">Rows</th><th class="num">Months</th><th>Uploaded by</th><th>At</th></tr></thead>
+            <tbody id="history-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── WORKLOADS ── -->
+    <div class="tab-panel" id="tab-workloads">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <h2>Workload Configuration</h2>
+          <p>Named workloads are tracked individually. Everything else rolls into <strong>Other</strong>.</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" id="discover-btn">Discover CUR tags</button>
+          <button class="btn btn-sm" id="add-wl-btn">+ Add workload</button>
+        </div>
+      </div>
+
+      <div id="tags-panel" style="display:none;margin-bottom:20px">
+        <div class="section-title" style="font-size:13px">CUR tags not yet tracked — click to add:</div>
+        <div id="tags-list"></div>
+      </div>
+
+      <div id="wl-wrap"><div class="loading">Loading…</div></div>
+    </div>
+
+  </div><!-- /card -->
+
+  <p class="footer">AWS FinOps Tracker · Cochlear Hosting Engineering · port 4020</p>
+</div>
+
+<!-- WORKLOAD MODAL -->
+<div class="modal-bg" id="wl-modal">
+  <div class="modal">
+    <h3 id="modal-title">Add Workload</h3>
+    <div class="mb16">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Workload Name *</label>
+      <input type="text" id="wl-name" placeholder="Must match workloads_tag in CUR exactly"/>
+    </div>
+    <div class="grid-2">
+      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Domain</label><input type="text" id="wl-domain" placeholder="e.g. Corporate Supply Chain"/></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Department</label><input type="text" id="wl-dept" placeholder="e.g. ISD"/></div>
+    </div>
+    <div class="grid-2">
+      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Budget Manager</label><input type="text" id="wl-mgr" placeholder="e.g. Jan Willems"/></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Monthly Budget (USD)</label><input type="number" id="wl-budget" placeholder="e.g. 99995" step="0.01"/></div>
+    </div>
+    <div class="mb16">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Description</label>
+      <input type="text" id="wl-desc" placeholder="Optional notes"/>
+    </div>
+    <div class="alert alert-err" id="modal-err" style="display:none"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" id="modal-cancel">Cancel</button>
+      <button class="btn" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "/AWSFinOps/api";
+let months = [], selMonth = null, editName = null;
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function usd(v) {
+  if (v === null || v === undefined) return "—";
+  const n = Math.round(typeof v === "number" ? v : parseFloat(String(v).replace(/,/g,"")));
+  return isNaN(n) || n === 0 ? "—" : "$" + n.toLocaleString("en-US");
+}
+function dev(v) {
+  if (v === null || v === undefined) return "—";
+  const n = Math.round(v);
+  if (isNaN(n)) return "—";
+  return (n >= 0 ? "+" : "") + "$" + Math.abs(n).toLocaleString("en-US") + (n > 0 ? " over" : n < 0 ? " under" : "");
+}
+function devCls(v) { return v > 0 ? "neg" : v < 0 ? "pos" : ""; }
+function monthLabel(m) {
+  return new Date(m + "T00:00:00").toLocaleString("en-AU", {month:"short", year:"numeric"});
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "workloads") loadWorkloads();
+    if (btn.dataset.tab === "upload") loadHistory();
+  });
+});
+
+// ── Months ────────────────────────────────────────────────────────────────────
+async function loadMonths() {
+  try {
+    const d = await fetch(API + "/months").then(r => r.json());
+    months = d.months || [];
+    renderMonthRow();
+    if (months.length) selectMonth(months[months.length - 1]);
+  } catch(e) { console.error(e); }
+}
+
+function renderMonthRow() {
+  const row = document.getElementById("month-row");
+  row.innerHTML = '<span class="month-label">Month:</span>';
+  if (!months.length) {
+    row.innerHTML += '<span style="font-size:12px;color:var(--muted)">No CUR data yet.</span>';
+    return;
+  }
+  months.forEach(m => {
+    const p = document.createElement("button");
+    p.className = "mpill" + (m === selMonth ? " active" : "");
+    p.textContent = monthLabel(m);
+    p.onclick = () => selectMonth(m);
+    row.appendChild(p);
+  });
+}
+
+async function selectMonth(m) {
+  selMonth = m;
+  renderMonthRow();
+  await loadInputs(m);
+  await loadRunCost(m);
+}
+
+// ── Monthly inputs ────────────────────────────────────────────────────────────
+async function loadInputs(m) {
+  document.getElementById("inputs-panel").style.display = "block";
+  document.getElementById("inputs-month-lbl").textContent =
+    new Date(m + "T00:00:00").toLocaleString("en-AU", {month:"long", year:"numeric"});
+  try {
+    const d = await fetch(`${API}/monthly-inputs/${m}`).then(r => r.json());
+    document.getElementById("inp-invoice").value  = d.telstra_invoice || "";
+    document.getElementById("inp-forecast").value = d.forecast || "";
+  } catch(e) {}
+}
+
+document.getElementById("save-inputs-btn").addEventListener("click", async () => {
+  if (!selMonth) return;
+  const body = {
+    telstra_invoice: document.getElementById("inp-invoice").value || null,
+    forecast:        document.getElementById("inp-forecast").value || null,
+  };
+  await fetch(`${API}/monthly-inputs/${selMonth}`, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body),
+  });
+  const tick = document.getElementById("save-tick");
+  tick.style.display = "inline";
+  setTimeout(() => tick.style.display = "none", 2000);
+  await loadRunCost(selMonth);
+});
+
+// ── Run Cost ──────────────────────────────────────────────────────────────────
+async function loadRunCost(m) {
+  document.getElementById("runcost-wrap").innerHTML = '<div class="loading">⏳ Computing…</div>';
+  document.getElementById("kpi-row").style.display = "none";
+  try {
+    const d = await fetch(`${API}/run-cost?month=${m}`).then(r => r.json());
+    renderRunCost(d);
+  } catch(e) {
+    document.getElementById("runcost-wrap").innerHTML = `<div class="alert alert-err">Error: ${e.message}</div>`;
+  }
+}
+
+function renderRunCost(d) {
+  // KPIs
+  document.getElementById("kpi-row").style.display = "flex";
+  document.getElementById("kpi-cur").textContent = usd(d.total_cur_actual);
+  document.getElementById("kpi-inv").textContent = d.telstra_invoice ? usd(d.telstra_invoice) : "Not set";
+  document.getElementById("kpi-fin").textContent = usd(d.total_finops);
+
+  const devEl = document.getElementById("kpi-dev");
+  if (d.deviation_to_forecast !== null && d.deviation_to_forecast !== undefined) {
+    devEl.textContent  = dev(d.deviation_to_forecast);
+    devEl.className    = "kpi-val " + devCls(d.deviation_to_forecast);
+    document.getElementById("kpi-fc-sub").textContent = "Forecast: " + usd(d.forecast);
+  } else {
+    devEl.textContent = "—"; devEl.className = "kpi-val";
+    document.getElementById("kpi-fc-sub").textContent = "No forecast set";
+  }
+
+  if (!d.rows || !d.rows.length) {
+    document.getElementById("runcost-wrap").innerHTML =
+      '<div class="empty">No workloads configured. Add workloads in the Workloads tab first.</div>';
+    return;
+  }
+
+  const hasTelstra = !!d.telstra_invoice;
+  let body = "";
+  d.rows.forEach(r => {
+    const isOther = r.workload === "Other";
+    const dv = r.deviation_to_budget;
+    body += `<tr class="${isOther ? "row-other" : ""}">
+      <td>${r.workload}</td>
+      <td>${r.domain || ""}</td>
+      <td>${r.budget_manager || ""}</td>
+      <td class="num">${r.budget_monthly ? usd(r.budget_monthly) : "—"}</td>
+      <td class="num">${usd(r.actual)}</td>
+      ${hasTelstra ? `<td class="num">${r.telstra_diff ? usd(r.telstra_diff) : "—"}</td><td class="num">${usd(r.total)}</td>` : ""}
+      <td class="num ${dv !== null && dv !== undefined ? devCls(dv) : ""}">${dv !== null && dv !== undefined ? dev(dv) : "—"}</td>
+    </tr>`;
+  });
+
+  const tvDev = d.deviation_to_forecast;
+  body += `<tr class="row-total">
+    <td colspan="3">TOTAL</td>
+    <td class="num">—</td>
+    <td class="num">${usd(d.total_cur_actual)}</td>
+    ${hasTelstra ? `<td class="num">${usd(d.total_telstra_diff)}</td><td class="num">${usd(d.total_finops)}</td>` : ""}
+    <td class="num ${tvDev !== null && tvDev !== undefined ? devCls(tvDev) : ""}">${tvDev !== null && tvDev !== undefined ? dev(tvDev) : "—"}</td>
+  </tr>`;
+
+  const tCols = hasTelstra ? "<th class='num'>Telstra Diff</th><th class='num'>FinOps Total</th>" : "";
+  document.getElementById("runcost-wrap").innerHTML = `
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th>
+        <th class="num">Budget/mo</th><th class="num">Actual (CUR)</th>
+        ${tCols}<th class="num">Dev vs Budget</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    ${!hasTelstra ? '<p style="font-size:11px;color:var(--muted);margin-top:8px">Enter the Telstra invoice above to show Telstra Diff and FinOps Total columns.</p>' : ""}`;
+}
+
+// ── Upload CUR ────────────────────────────────────────────────────────────────
+const dropZone = document.getElementById("drop-zone");
+const curInput = document.getElementById("cur-input");
+
+dropZone.addEventListener("click",    () => curInput.click());
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("over"); });
+dropZone.addEventListener("dragleave",  () => dropZone.classList.remove("over"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault(); dropZone.classList.remove("over");
+  if (e.dataTransfer.files[0]) uploadCUR(e.dataTransfer.files[0]);
+});
+curInput.addEventListener("change", () => {
+  if (curInput.files[0]) uploadCUR(curInput.files[0]);
+  curInput.value = "";
+});
+
+async function uploadCUR(file) {
+  const st = document.getElementById("upload-status");
+  st.innerHTML = '<div class="alert alert-info">⏳ Uploading and ingesting CUR data…</div>';
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const res  = await fetch(API + "/upload-cur", { method:"POST", body:fd });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      st.innerHTML = `<div class="alert alert-err">❌ ${data.error}</div>`;
+      return;
+    }
+    const warns = data.errors && data.errors.length
+      ? `<br/><small>Warnings: ${data.errors.join("; ")}</small>` : "";
+    st.innerHTML = `<div class="alert alert-ok">
+      ✅ <strong>${file.name}</strong> ingested.<br/>
+      ${data.rows_upserted.toLocaleString()} rows upserted across ${data.months_found} months.${warns}
+    </div>`;
+    await loadMonths();
+    await loadHistory();
+  } catch(e) {
+    st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`;
+  }
+}
+
+async function loadHistory() {
+  try {
+    const d = await fetch(API + "/upload-history").then(r => r.json());
+    const rows = (d.history || []);
+    if (!rows.length) return;
+    document.getElementById("history-section").style.display = "block";
+    document.getElementById("history-body").innerHTML = rows.map(r =>
+      `<tr><td>${r.filename}</td><td class="num">${(r.rows_upserted||0).toLocaleString()}</td>
+       <td class="num">${r.months_found||0}</td><td>${r.uploaded_by||""}</td>
+       <td style="white-space:nowrap;font-size:11px">${r.uploaded_at||""}</td></tr>`
+    ).join("");
+  } catch(e) {}
+}
+
+// ── Workloads ─────────────────────────────────────────────────────────────────
+async function loadWorkloads() {
+  document.getElementById("wl-wrap").innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const d = await fetch(API + "/workloads").then(r => r.json());
+    renderWorkloads(d.workloads || []);
+  } catch(e) {
+    document.getElementById("wl-wrap").innerHTML = `<div class="alert alert-err">${e.message}</div>`;
+  }
+}
+
+function renderWorkloads(wls) {
+  if (!wls.length) {
+    document.getElementById("wl-wrap").innerHTML =
+      '<div class="empty">No workloads yet. Click <strong>Discover CUR tags</strong> after uploading a CUR file, or add manually.</div>';
+    return;
+  }
+  document.getElementById("wl-wrap").innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Name</th><th>Domain</th><th>Department</th><th>Budget Manager</th>
+      <th class="num">Budget/mo</th><th>Description</th><th></th></tr></thead>
+      <tbody>${wls.map(w => `<tr>
+        <td><strong>${w.name}</strong></td>
+        <td>${w.domain||"—"}</td><td>${w.department||"—"}</td><td>${w.budget_manager||"—"}</td>
+        <td class="num">${w.budget_monthly ? usd(w.budget_monthly) : "—"}</td>
+        <td style="font-size:11px;color:var(--muted)">${w.description||""}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-outline btn-sm" onclick='openEdit(${JSON.stringify(w)})'>Edit</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick='delWL(${JSON.stringify(w.name)})'>Del</button>
+        </td></tr>`).join("")}
+      </tbody>
+    </table></div>`;
+}
+
+async function delWL(name) {
+  if (!confirm(`Delete workload "${name}"? It will roll into Other.`)) return;
+  await fetch(`${API}/workloads/${encodeURIComponent(name)}`, {method:"DELETE"});
+  loadWorkloads();
+  if (selMonth) loadRunCost(selMonth);
+}
+
+document.getElementById("discover-btn").addEventListener("click", async () => {
+  const panel = document.getElementById("tags-panel");
+  const list  = document.getElementById("tags-list");
+  list.innerHTML = "Loading…"; panel.style.display = "block";
+  try {
+    const [t, w] = await Promise.all([
+      fetch(API + "/cur-tags").then(r => r.json()),
+      fetch(API + "/workloads").then(r => r.json()),
+    ]);
+    const existing = new Set((w.workloads||[]).map(x => x.name.toLowerCase()));
+    const newTags  = (t.tags||[]).filter(x => !existing.has(x.toLowerCase()));
+    list.innerHTML = newTags.length
+      ? newTags.map(t => `<span class="tag-chip" onclick='openAddPrefilled(${JSON.stringify(t)})'>${t}</span>`).join("")
+      : '<span style="font-size:12px;color:var(--muted)">All CUR tags are already configured.</span>';
+  } catch(e) { list.innerHTML = `<span style="color:var(--red)">${e.message}</span>`; }
+});
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function clearModal() {
+  ["wl-name","wl-domain","wl-dept","wl-mgr","wl-budget","wl-desc"].forEach(id => {
+    document.getElementById(id).value = "";
+    if (id === "wl-name") document.getElementById(id).disabled = false;
+  });
+  document.getElementById("modal-err").style.display = "none";
+}
+
+function openAdd() {
+  editName = null;
+  document.getElementById("modal-title").textContent = "Add Workload";
+  clearModal();
+  document.getElementById("wl-modal").classList.add("open");
+}
+
+function openAddPrefilled(name) {
+  openAdd();
+  document.getElementById("wl-name").value = name;
+}
+
+function openEdit(w) {
+  editName = w.name;
+  document.getElementById("modal-title").textContent = `Edit — ${w.name}`;
+  clearModal();
+  document.getElementById("wl-name").value    = w.name;
+  document.getElementById("wl-name").disabled = true;
+  document.getElementById("wl-domain").value  = w.domain || "";
+  document.getElementById("wl-dept").value    = w.department || "";
+  document.getElementById("wl-mgr").value     = w.budget_manager || "";
+  document.getElementById("wl-budget").value  = w.budget_monthly || "";
+  document.getElementById("wl-desc").value    = w.description || "";
+  document.getElementById("wl-modal").classList.add("open");
+}
+
+document.getElementById("add-wl-btn").addEventListener("click", openAdd);
+document.getElementById("modal-cancel").addEventListener("click", () => document.getElementById("wl-modal").classList.remove("open"));
+document.getElementById("wl-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("wl-modal")) document.getElementById("wl-modal").classList.remove("open");
+});
+
+document.getElementById("modal-save").addEventListener("click", async () => {
+  const name   = document.getElementById("wl-name").value.trim();
+  const errEl  = document.getElementById("modal-err");
+  if (!name) { errEl.textContent = "Workload name is required."; errEl.style.display = "block"; return; }
+
+  const payload = {
+    name,
+    domain:         document.getElementById("wl-domain").value.trim(),
+    department:     document.getElementById("wl-dept").value.trim(),
+    budget_manager: document.getElementById("wl-mgr").value.trim(),
+    description:    document.getElementById("wl-desc").value.trim(),
+    budget_monthly: document.getElementById("wl-budget").value || null,
+  };
+
+  const url    = editName ? `${API}/workloads/${encodeURIComponent(editName)}` : `${API}/workloads`;
+  const method = editName ? "PUT" : "POST";
+
+  try {
+    const res  = await fetch(url, {method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || "Save failed."; errEl.style.display = "block"; return; }
+    document.getElementById("wl-modal").classList.remove("open");
+    loadWorkloads();
+    if (selMonth) loadRunCost(selMonth);
+  } catch(e) { errEl.textContent = e.message; errEl.style.display = "block"; }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadMonths();
+</script>
+</body>
+</html>
