@@ -42,7 +42,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS workloads (
             name           TEXT PRIMARY KEY,
-            domain         TEXT,
+            outcomegroup   TEXT,
             department     TEXT,
             budget_manager TEXT,
             description    TEXT,

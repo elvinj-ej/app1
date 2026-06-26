@@ -495,11 +495,11 @@ def api_create_workload():
     try:
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO workloads (name,domain,department,budget_manager,description,budget_monthly) "
+                "INSERT INTO workloads (name,outcomegroup,department,budget_manager,description,budget_monthly) "
                 "VALUES (?,?,?,?,?,?)",
                 (
                     name,
-                    (data.get("domain") or "").strip() or None,
+                    (data.get("outcomegroup") or "").strip() or None,
                     (data.get("department") or "").strip() or None,
                     (data.get("budget_manager") or "").strip() or None,
                     (data.get("description") or "").strip() or None,
@@ -520,10 +520,10 @@ def api_update_workload(name):
     data = request.get_json(force=True)
     with get_conn() as conn:
         conn.execute(
-            "UPDATE workloads SET domain=?,department=?,budget_manager=?,description=?,budget_monthly=? "
+            "UPDATE workloads SET outcomegroup=?,department=?,budget_manager=?,description=?,budget_monthly=? "
             "WHERE name=?",
             (
-                (data.get("domain") or "").strip() or None,
+                (data.get("outcomegroup") or "").strip() or None,
                 (data.get("department") or "").strip() or None,
                 (data.get("budget_manager") or "").strip() or None,
                 (data.get("description") or "").strip() or None,
@@ -555,6 +555,35 @@ def api_cur_tags():
             "WHERE workloads_tag != '' ORDER BY workloads_tag"
         ).fetchall()
     return jsonify({"tags": [r["workloads_tag"] for r in rows]})
+
+
+# ── API: auto-create workloads from CUR tags ──────────────────────────────────
+
+@app.route("/AWSFinOps/api/workloads/discover", methods=["POST"])
+@login_required
+def api_discover_workloads():
+    """Insert any workloads_tag from cur_data not already in the workloads table."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT workloads_tag,
+                   (SELECT outcomegroup FROM cur_data c2
+                    WHERE c2.workloads_tag = c1.workloads_tag AND c2.outcomegroup IS NOT NULL
+                    LIMIT 1) AS outcomegroup
+            FROM cur_data c1
+            WHERE workloads_tag != ''
+            GROUP BY workloads_tag
+        """).fetchall()
+        added = 0
+        for r in rows:
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO workloads (name, outcomegroup) VALUES (?, ?)",
+                    (r["workloads_tag"], r["outcomegroup"]),
+                )
+                added += conn.execute("SELECT changes()").fetchone()[0]
+            except Exception:
+                pass
+    return jsonify({"added": added})
 
 
 # ── API: status ────────────────────────────────────────────────────────────────

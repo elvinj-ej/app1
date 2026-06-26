@@ -31,7 +31,7 @@ def get_available_months() -> list[str]:
 def get_workloads() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT name, domain, department, budget_manager, description, budget_monthly "
+            "SELECT name, outcomegroup, department, budget_manager, description, budget_monthly "
             "FROM workloads ORDER BY name"
         ).fetchall()
     return [dict(r) for r in rows]
@@ -56,7 +56,7 @@ def compute_run_cost(month: str) -> dict[str, Any]:
         """, (month,)).fetchall()
 
         workloads = conn.execute(
-            "SELECT name, domain, department, budget_manager, budget_monthly "
+            "SELECT name, outcomegroup, department, budget_manager, budget_monthly "
             "FROM workloads ORDER BY name"
         ).fetchall()
 
@@ -101,7 +101,7 @@ def compute_run_cost(month: str) -> dict[str, Any]:
         budget = float(w["budget_monthly"] or 0)
         rows.append({
             "workload":           w["name"],
-            "domain":             w["domain"] or "",
+            "outcomegroup":       w["outcomegroup"] or "",
             "department":         w["department"] or "",
             "budget_manager":     w["budget_manager"] or "",
             "budget_monthly":     budget or None,
@@ -114,7 +114,7 @@ def compute_run_cost(month: str) -> dict[str, Any]:
     other_tdiff = _t_share(other_actual)
     rows.append({
         "workload":           "Other",
-        "domain":             "ALL",
+        "outcomegroup":       "ALL",
         "department":         "",
         "budget_manager":     "",
         "budget_monthly":     None,

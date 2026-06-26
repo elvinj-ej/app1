@@ -276,7 +276,7 @@
       <input type="text" id="wl-name" placeholder="Must match workloads_tag in CUR exactly"/>
     </div>
     <div class="grid-2">
-      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Domain</label><input type="text" id="wl-domain" placeholder="e.g. Corporate Supply Chain"/></div>
+      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Outcome Group</label><input type="text" id="wl-outcomegroup" placeholder="e.g. Corporate Supply Chain"/></div>
       <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Department</label><input type="text" id="wl-dept" placeholder="e.g. ISD"/></div>
     </div>
     <div class="grid-2">
@@ -430,7 +430,7 @@ function renderRunCost(d) {
     const dv = r.deviation_to_budget;
     body += `<tr class="${isOther ? "row-other" : ""}">
       <td>${r.workload}</td>
-      <td>${r.domain || ""}</td>
+      <td>${r.outcomegroup || ""}</td>
       <td>${r.budget_manager || ""}</td>
       <td class="num">${r.budget_monthly ? usd(r.budget_monthly) : "—"}</td>
       <td class="num">${usd(r.actual)}</td>
@@ -452,7 +452,7 @@ function renderRunCost(d) {
   document.getElementById("runcost-wrap").innerHTML = `
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th>
+        <thead><tr><th>Workload</th><th>Outcome Group</th><th>Budget Manager</th>
         <th class="num">Budget/mo</th><th class="num">Actual (CUR)</th>
         ${tCols}<th class="num">Dev vs Budget</th></tr></thead>
         <tbody>${body}</tbody>
@@ -495,8 +495,14 @@ async function uploadCUR(file) {
       ✅ <strong>${file.name}</strong> ingested.<br/>
       ${data.rows_upserted.toLocaleString()} rows upserted across ${data.months_found} months.${warns}
     </div>`;
+    // Auto-create any new workloads found in this CUR upload
+    const disc = await fetch(API + "/workloads/discover", {method:"POST"}).then(r => r.json()).catch(()=>({added:0}));
     await loadMonths();
+    await loadWorkloads();
     await loadHistory();
+    if (disc.added > 0) {
+      st.innerHTML += `<div class="alert alert-info" style="margin-top:8px">✨ ${disc.added} new workload${disc.added>1?"s":""} auto-added from CUR tags (Outcome Group pre-filled). Review them in the Workloads tab.</div>`;
+    }
   } catch(e) {
     st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`;
   }
@@ -535,11 +541,11 @@ function renderWorkloads(wls) {
   }
   document.getElementById("wl-wrap").innerHTML = `
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Name</th><th>Domain</th><th>Department</th><th>Budget Manager</th>
+      <thead><tr><th>Name</th><th>Outcome Group</th><th>Department</th><th>Budget Manager</th>
       <th class="num">Budget/mo</th><th>Description</th><th></th></tr></thead>
       <tbody>${wls.map(w => `<tr>
         <td><strong>${w.name}</strong></td>
-        <td>${w.domain||"—"}</td><td>${w.department||"—"}</td><td>${w.budget_manager||"—"}</td>
+        <td>${w.outcomegroup||"—"}</td><td>${w.department||"—"}</td><td>${w.budget_manager||"—"}</td>
         <td class="num">${w.budget_monthly ? usd(w.budget_monthly) : "—"}</td>
         <td style="font-size:11px;color:var(--muted)">${w.description||""}</td>
         <td style="white-space:nowrap">
@@ -576,7 +582,7 @@ document.getElementById("discover-btn").addEventListener("click", async () => {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 function clearModal() {
-  ["wl-name","wl-domain","wl-dept","wl-mgr","wl-budget","wl-desc"].forEach(id => {
+  ["wl-name","wl-outcomegroup","wl-dept","wl-mgr","wl-budget","wl-desc"].forEach(id => {
     document.getElementById(id).value = "";
     if (id === "wl-name") document.getElementById(id).disabled = false;
   });
@@ -601,7 +607,7 @@ function openEdit(w) {
   clearModal();
   document.getElementById("wl-name").value    = w.name;
   document.getElementById("wl-name").disabled = true;
-  document.getElementById("wl-domain").value  = w.domain || "";
+  document.getElementById("wl-outcomegroup").value = w.outcomegroup || "";
   document.getElementById("wl-dept").value    = w.department || "";
   document.getElementById("wl-mgr").value     = w.budget_manager || "";
   document.getElementById("wl-budget").value  = w.budget_monthly || "";
@@ -622,7 +628,7 @@ document.getElementById("modal-save").addEventListener("click", async () => {
 
   const payload = {
     name,
-    domain:         document.getElementById("wl-domain").value.trim(),
+    outcomegroup:   document.getElementById("wl-outcomegroup").value.trim(),
     department:     document.getElementById("wl-dept").value.trim(),
     budget_manager: document.getElementById("wl-mgr").value.trim(),
     description:    document.getElementById("wl-desc").value.trim(),
