@@ -47,7 +47,8 @@ def _parse_excel(path: str):
         raw_id = row[0]
         if raw_id is None or str(raw_id).strip() in ("", "None"):
             continue
-        account_id = re.sub(r"[\t\s]+", "", str(raw_id)).strip()
+        raw_id_str = str(raw_id).strip().lstrip("\\t").strip()
+        account_id = re.sub(r"[\t\s]+", "", raw_id_str).strip()
         if not account_id:
             continue
 
@@ -94,7 +95,8 @@ def _parse_csv(path: str):
                 for col_idx, val in enumerate(row):
                     if col_idx < 5:
                         continue
-                    for fmt in ("%Y-%m-%d", "%Y-%m", "%Y/%m/%d", "%Y/%m"):
+                    for fmt in ("%Y-%m-%d", "%Y-%m", "%Y/%m/%d", "%Y/%m",
+                                "%b-%Y", "%B-%Y"):
                         try:
                             dt = datetime.strptime(val.strip(), fmt)
                             month_dates.append(dt)
@@ -105,6 +107,8 @@ def _parse_csv(path: str):
                 continue
 
             raw_id = row[0].strip() if row else ""
+            # Strip literal "\t" prefix (backslash-t, not tab) that appears in exports
+            raw_id = raw_id.lstrip("\\t").strip()
             account_id = re.sub(r"[\t\s]+", "", raw_id).strip()
             if not account_id:
                 continue
