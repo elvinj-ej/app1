@@ -491,17 +491,24 @@ async function uploadCUR(file) {
     }
     const warns = data.errors && data.errors.length
       ? `<br/><small>Warnings: ${data.errors.join("; ")}</small>` : "";
+    const wlMsg = data.workloads_added > 0
+      ? `<br/><small>✨ ${data.workloads_added} new workload${data.workloads_added>1?"s":""} auto-added from CUR tags.</small>` : "";
     st.innerHTML = `<div class="alert alert-ok">
       ✅ <strong>${file.name}</strong> ingested.<br/>
-      ${data.rows_upserted.toLocaleString()} rows upserted across ${data.months_found} months.${warns}
+      ${data.rows_upserted.toLocaleString()} rows upserted across ${data.months_found} months.${wlMsg}${warns}
     </div>`;
-    // Auto-create any new workloads found in this CUR upload
-    const disc = await fetch(API + "/workloads/discover", {method:"POST"}).then(r => r.json()).catch(()=>({added:0}));
     await loadMonths();
     await loadWorkloads();
     await loadHistory();
-    if (disc.added > 0) {
-      st.innerHTML += `<div class="alert alert-info" style="margin-top:8px">✨ ${disc.added} new workload${disc.added>1?"s":""} auto-added from CUR tags (Outcome Group pre-filled). Review them in the Workloads tab.</div>`;
+    // Auto-switch to Run Cost tab and load latest month
+    if (data.latest_month) {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "runcost"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-runcost"));
+      selMonth = data.latest_month;
+      document.querySelectorAll(".month-pill").forEach(p => {
+        p.classList.toggle("active", p.dataset.month === selMonth);
+      });
+      await loadRunCost(selMonth);
     }
   } catch(e) {
     st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`;

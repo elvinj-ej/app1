@@ -452,6 +452,33 @@ def api_upload_cur():
     try:
         f.save(tmp_path)
         result = ingest_cur(tmp_path, uploaded_by=session.get("username", ""))
+
+        # Auto-create workloads from CUR tags (INSERT OR IGNORE keeps existing budgets)
+        workloads_added = 0
+        with get_conn() as conn:
+            rows = conn.execute("""
+                SELECT workloads_tag,
+                       (SELECT outcomegroup FROM cur_data c2
+                        WHERE c2.workloads_tag = c1.workloads_tag
+                          AND c2.outcomegroup IS NOT NULL LIMIT 1) AS outcomegroup
+                FROM cur_data c1
+                WHERE workloads_tag != ''
+                GROUP BY workloads_tag
+            """).fetchall()
+            for r in rows:
+                conn.execute(
+                    "INSERT OR IGNORE INTO workloads (name, outcomegroup) VALUES (?, ?)",
+                    (r["workloads_tag"], r["outcomegroup"]),
+                )
+                workloads_added += conn.execute("SELECT changes()").fetchone()[0]
+
+        result["workloads_added"] = workloads_added
+
+        # Return the latest available month so UI can auto-load Run Cost
+        from aws_run_cost import get_available_months
+        months = get_available_months()
+        result["latest_month"] = months[-1] if months else None
+
         return jsonify(result)
     except Exception as e:
         log.error(f"CUR upload error: {e}")
