@@ -32,7 +32,7 @@ from waitress import serve
 
 from aws_db import init_db, get_conn
 from aws_ingestor import ingest_cur
-from aws_run_cost import get_available_months, get_workloads, get_monthly_input, compute_run_cost
+from aws_run_cost import get_available_months, get_workloads, get_monthly_input, compute
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
@@ -401,7 +401,7 @@ def api_run_cost():
         month  = months[-1] if months else None
     if not month:
         return jsonify({"error": "No CUR data available."}), 404
-    return jsonify(compute_run_cost(month))
+    return jsonify(compute(month))
 
 
 # ── API: monthly inputs ────────────────────────────────────────────────────────
@@ -417,21 +417,23 @@ def api_get_inputs(month):
 def api_save_inputs(month):
     data = request.get_json(force=True)
     try:
-        telstra  = float(data.get("telstra_invoice") or 0) or None
-        forecast = float(data.get("forecast") or 0) or None
+        telstra          = float(data.get("telstra_invoice")  or 0) or None
+        forecast_run     = float(data.get("forecast_run")     or 0) or None
+        forecast_project = float(data.get("forecast_project") or 0) or None
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
 
     with get_conn() as conn:
-        conn.execute("""
-            INSERT INTO monthly_inputs (month, telstra_invoice, forecast) VALUES (?,?,?)
-            ON CONFLICT(month) DO UPDATE SET
-                telstra_invoice = excluded.telstra_invoice,
-                forecast        = excluded.forecast
-        """, (month, telstra, forecast))
+        conn.execute(
+            "INSERT INTO monthly_inputs (month, telstra_invoice, forecast_run, forecast_project) VALUES (?,?,?,?) "
+            "ON CONFLICT(month) DO UPDATE SET "
+            "telstra_invoice=excluded.telstra_invoice, "
+            "forecast_run=excluded.forecast_run, "
+            "forecast_project=excluded.forecast_project",
+            (month, telstra, forecast_run, forecast_project),
+        )
 
-    log.info(f"Monthly inputs saved: {month} invoice={telstra} forecast={forecast} "
-             f"by {session.get('username','')}")
+    log.info(f"Monthly inputs saved: {month} by {session.get('username','')}")
     return jsonify({"ok": True})
 
 
@@ -453,32 +455,8 @@ def api_upload_cur():
         f.save(tmp_path)
         result = ingest_cur(tmp_path, uploaded_by=session.get("username", ""))
 
-        # Auto-create workloads from CUR tags (INSERT OR IGNORE keeps existing budgets)
-        workloads_added = 0
-        with get_conn() as conn:
-            rows = conn.execute("""
-                SELECT workloads_tag,
-                       (SELECT outcomegroup FROM cur_data c2
-                        WHERE c2.workloads_tag = c1.workloads_tag
-                          AND c2.outcomegroup IS NOT NULL LIMIT 1) AS outcomegroup
-                FROM cur_data c1
-                WHERE workloads_tag != ''
-                GROUP BY workloads_tag
-            """).fetchall()
-            for r in rows:
-                conn.execute(
-                    "INSERT OR IGNORE INTO workloads (name, outcomegroup) VALUES (?, ?)",
-                    (r["workloads_tag"], r["outcomegroup"]),
-                )
-                workloads_added += conn.execute("SELECT changes()").fetchone()[0]
-
-        result["workloads_added"] = workloads_added
-
-        # Return the latest available month so UI can auto-load Run Cost
-        from aws_run_cost import get_available_months
         months = get_available_months()
         result["latest_month"] = months[-1] if months else None
-
         return jsonify(result)
     except Exception as e:
         log.error(f"CUR upload error: {e}")
@@ -522,12 +500,12 @@ def api_create_workload():
     try:
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO workloads (name,outcomegroup,department,budget_manager,description,budget_monthly) "
+                "INSERT INTO workloads (name,domain,cost_category,budget_manager,description,budget_monthly) "
                 "VALUES (?,?,?,?,?,?)",
                 (
                     name,
-                    (data.get("outcomegroup") or "").strip() or None,
-                    (data.get("department") or "").strip() or None,
+                    (data.get("domain") or "").strip() or None,
+                    (data.get("cost_category") or "Consumption").strip(),
                     (data.get("budget_manager") or "").strip() or None,
                     (data.get("description") or "").strip() or None,
                     float(data.get("budget_monthly") or 0) or None,
@@ -547,11 +525,11 @@ def api_update_workload(name):
     data = request.get_json(force=True)
     with get_conn() as conn:
         conn.execute(
-            "UPDATE workloads SET outcomegroup=?,department=?,budget_manager=?,description=?,budget_monthly=? "
+            "UPDATE workloads SET domain=?,cost_category=?,budget_manager=?,description=?,budget_monthly=? "
             "WHERE name=?",
             (
-                (data.get("outcomegroup") or "").strip() or None,
-                (data.get("department") or "").strip() or None,
+                (data.get("domain") or "").strip() or None,
+                (data.get("cost_category") or "Consumption").strip(),
                 (data.get("budget_manager") or "").strip() or None,
                 (data.get("description") or "").strip() or None,
                 float(data.get("budget_monthly") or 0) or None,
@@ -604,7 +582,7 @@ def api_discover_workloads():
         for r in rows:
             try:
                 conn.execute(
-                    "INSERT OR IGNORE INTO workloads (name, outcomegroup) VALUES (?, ?)",
+                    "INSERT OR IGNORE INTO workloads (name, domain) VALUES (?, ?)",
                     (r["workloads_tag"], r["outcomegroup"]),
                 )
                 added += conn.execute("SELECT changes()").fetchone()[0]

@@ -1,290 +1,258 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AWS FinOps Tracker — Cochlear Hosting</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --yellow:    #F0A500;
-      --yellow-lt: #FEF3D9;
-      --charcoal:  #2B3752;
-      --bg:        #F7F7F5;
-      --surface:   #FFFFFF;
-      --border:    #DDD9D4;
-      --text:      #2B3752;
-      --muted:     #6B7280;
-      --green:     #1a6b2a;
-      --green-bg:  #EAF6EE;
-      --green-bd:  #A8D8B8;
-      --red:       #7A1A1A;
-      --red-bg:    #FDF0EE;
-      --red-bd:    #ECC0B8;
-      --shadow:    0 4px 16px rgba(43,55,82,.10), 0 2px 6px rgba(43,55,82,.05);
-    }
-    body { font-family:'Calibri','Segoe UI',Arial,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.5; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AWS FinOps Tracker</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#2B3752;--yellow:#F0A500;--bg:#F5F6FA;--white:#fff;
+  --border:#E2E5EC;--muted:#7A8194;--red:#C0392B;--green:#1A7A4A;
+  --text:#1C2333;--hover:#F9FAFB;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;background:var(--bg);color:var(--text)}
+a{color:var(--yellow)}
 
-    /* HEADER */
-    .header { background:var(--charcoal); height:60px; display:flex; align-items:center; justify-content:space-between; padding:0 32px; position:sticky; top:0; z-index:50; box-shadow:0 2px 8px rgba(0,0,0,.18); }
-    .logo { display:flex; align-items:center; gap:14px; text-decoration:none; }
-    .logo-circle { width:34px; height:34px; border-radius:50%; background:var(--yellow); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:16px; color:var(--charcoal); flex-shrink:0; }
-    .logo-divider { width:1px; height:22px; background:rgba(255,255,255,.25); }
-    .logo-title { font-size:15px; font-weight:700; color:#fff; line-height:1.2; }
-    .logo-sub   { font-size:11px; color:rgba(255,255,255,.6); }
-    .header-right { display:flex; align-items:center; gap:12px; }
-    .user-badge { display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:20px; padding:4px 12px 4px 8px; }
-    .user-avatar { width:26px; height:26px; border-radius:50%; background:var(--yellow); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; color:var(--charcoal); }
-    .user-name { font-size:12px; font-weight:600; color:rgba(255,255,255,.9); }
-    .btn-logout { font-size:12px; color:rgba(255,255,255,.65); text-decoration:none; padding:4px 12px; border:1px solid rgba(255,255,255,.2); border-radius:6px; }
-    .btn-logout:hover { background:rgba(255,255,255,.1); color:#fff; }
+/* ── header ── */
+.header{background:var(--navy);color:#fff;padding:0 28px;display:flex;align-items:center;height:56px;gap:16px}
+.header-logo{font-size:1rem;font-weight:700;letter-spacing:.3px}
+.header-sub{font-size:.78rem;opacity:.6;margin-left:4px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:.82rem;opacity:.85}
+.btn-logout{background:rgba(255,255,255,.12);border:none;color:#fff;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:.8rem}
+.btn-logout:hover{background:rgba(255,255,255,.22)}
 
-    /* PAGE */
-    .page { max-width:1600px; margin:0 auto; padding:32px 24px 64px; }
-    .page-title { margin-bottom:24px; }
-    .page-title h1 { font-size:20px; font-weight:700; color:var(--charcoal); margin-bottom:4px; }
-    .page-title p  { font-size:13px; color:var(--muted); max-width:860px; }
+/* ── tabs ── */
+.tabs{background:#fff;border-bottom:2px solid var(--border);padding:0 28px;display:flex;gap:4px}
+.tab-btn{padding:14px 20px;font-size:.85rem;font-weight:600;color:var(--muted);background:none;
+         border:none;border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer;font-family:inherit;
+         transition:color .15s,border-color .15s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--navy);border-bottom-color:var(--yellow)}
+.tab-panel{display:none;padding:24px 28px}
+.tab-panel.active{display:block}
 
-    /* TABS */
-    .tab-bar { display:flex; border-bottom:2px solid var(--border); }
-    .tab-btn { padding:10px 24px; font-size:14px; font-weight:700; color:var(--muted); background:none; border:none; border-bottom:3px solid transparent; margin-bottom:-2px; cursor:pointer; font-family:inherit; transition:color .15s,border-color .15s; }
-    .tab-btn:hover { color:var(--charcoal); }
-    .tab-btn.active { color:var(--charcoal); border-bottom-color:var(--yellow); }
-    .card { background:var(--surface); border-radius:0 0 10px 10px; box-shadow:var(--shadow); padding:36px 44px; border:1px solid var(--border); border-top:none; }
-    .tab-panel { display:none; }
-    .tab-panel.active { display:block; }
+/* ── cards ── */
+.kpi-row{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px 20px;flex:1;min-width:160px}
+.kpi-label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.kpi-val{font-size:1.35rem;font-weight:700;color:var(--navy)}
+.kpi-val.red{color:var(--red)}
+.kpi-val.green{color:var(--green)}
 
-    /* TOOLBAR */
-    .toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:24px; }
-    .toolbar-left h2 { font-size:15px; font-weight:700; color:var(--charcoal); }
-    .toolbar-left p  { font-size:12px; color:var(--muted); margin-top:3px; }
+/* ── controls bar ── */
+.controls{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.month-pills{display:flex;flex-wrap:wrap;gap:6px}
+.month-pill{padding:5px 12px;border:1px solid var(--border);border-radius:14px;font-size:.78rem;
+            font-weight:600;cursor:pointer;background:#fff;color:var(--muted);transition:all .15s}
+.month-pill:hover{border-color:var(--yellow);color:var(--navy)}
+.month-pill.active{background:var(--navy);border-color:var(--navy);color:#fff}
 
-    /* BUTTONS */
-    .btn { padding:8px 18px; background:var(--yellow); color:var(--charcoal); border:none; border-radius:6px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; white-space:nowrap; transition:filter .15s; }
-    .btn:hover:not(:disabled) { filter:brightness(1.06); }
-    .btn:disabled { background:#e5c875; cursor:not-allowed; }
-    .btn-sm { padding:5px 12px; font-size:12px; }
-    .btn-outline { background:#fff; border:1px solid var(--border); color:var(--text); }
-    .btn-outline:hover { background:var(--bg); }
-    .btn-danger { background:var(--red-bg); border:1px solid var(--red-bd); color:var(--red); }
-    .btn-danger:hover { background:#f5c6c6; }
+/* ── inputs panel ── */
+.inputs-bar{background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 20px;
+            margin-bottom:20px;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end}
+.inp-group label{display:block;font-size:.75rem;font-weight:700;color:var(--muted);
+                 text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.inp-group input{padding:7px 10px;border:1px solid var(--border);border-radius:5px;
+                 font-size:.88rem;font-family:inherit;width:160px;outline:none}
+.inp-group input:focus{border-color:var(--yellow)}
+.btn{padding:8px 18px;background:var(--yellow);color:var(--navy);border:none;border-radius:5px;
+     font-weight:700;font-size:.85rem;cursor:pointer;font-family:inherit}
+.btn:hover{background:#d99300}
+.btn-outline{background:#fff;border:1px solid var(--border);color:var(--navy)}
+.btn-outline:hover{border-color:var(--yellow)}
+.btn-sm{padding:4px 10px;font-size:.78rem}
+.btn-danger{background:#fdecea;color:var(--red);border:1px solid #f3c9c9}
+.btn-danger:hover{background:#f8d7d3}
 
-    /* DROP ZONE */
-    .drop-zone { border:2px dashed var(--border); border-radius:8px; padding:52px 20px; text-align:center; cursor:pointer; background:var(--bg); margin-bottom:20px; transition:border-color .2s,background .2s; }
-    .drop-zone:hover,.drop-zone.over { border-color:var(--yellow); background:var(--yellow-lt); }
-    .drop-zone .icon { font-size:2.5rem; display:block; margin-bottom:12px; }
-    .drop-zone p { font-size:13px; color:var(--muted); }
-    .drop-zone .hint { font-size:11px; color:#aaa; margin-top:4px; }
-    #cur-input { display:none; }
+/* ── table ── */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;
+      border:1px solid var(--border);border-radius:8px;overflow:hidden}
+thead tr{background:var(--navy);color:#fff}
+th{padding:10px 10px;text-align:left;font-weight:600;font-size:.76rem;
+   text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+th.num,td.num{text-align:right}
+td{padding:8px 10px;border-top:1px solid var(--border);vertical-align:middle}
+tbody tr:hover{background:var(--hover)}
 
-    /* ALERTS */
-    .alert { padding:12px 16px; border-radius:6px; font-size:13px; margin-bottom:16px; line-height:1.6; }
-    .alert-ok   { background:var(--green-bg); color:var(--green); border:1px solid var(--green-bd); }
-    .alert-err  { background:var(--red-bg);   color:var(--red);   border:1px solid var(--red-bd); }
-    .alert-info { background:#EFF6FF; color:#1e40af; border:1px solid #bfdbfe; }
+/* section header rows */
+tr.section-hdr td{background:#EEF2F7;font-weight:700;color:var(--navy);font-size:.78rem;
+                  text-transform:uppercase;letter-spacing:.4px;padding:6px 10px;border-top:2px solid var(--border)}
+tr.row-shared td{background:#FFF8E7;font-weight:600;color:#7A5C00}
+tr.row-other td{font-style:italic;color:var(--muted)}
+tr.row-total td{background:var(--navy);color:#fff;font-weight:700}
+tr.row-subtotal td{background:#F0F4FA;font-weight:700;color:var(--navy)}
 
-    /* MONTH PILLS */
-    .month-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:24px; }
-    .month-label { font-size:12px; color:var(--muted); margin-right:4px; }
-    .mpill { padding:5px 14px; border-radius:20px; font-size:12px; font-weight:600; border:1.5px solid var(--border); background:#fff; cursor:pointer; color:var(--muted); transition:border-color .15s,background .15s; }
-    .mpill.active { background:var(--charcoal); color:#fff; border-color:var(--charcoal); }
-    .mpill:hover:not(.active) { border-color:var(--yellow); color:var(--charcoal); }
+.num{font-variant-numeric:tabular-nums}
+.dev-pos{color:var(--red)}   /* over budget */
+.dev-neg{color:var(--green)} /* under budget */
+.no-data{text-align:center;padding:60px 20px;color:var(--muted);font-size:.9rem}
 
-    /* INPUTS PANEL */
-    .inputs-panel { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:20px 24px; margin-bottom:24px; }
-    .inputs-panel-title { font-size:13px; font-weight:700; color:var(--charcoal); margin-bottom:14px; }
-    .inputs-grid { display:grid; grid-template-columns:1fr 1fr auto; gap:16px; align-items:end; }
-    .field-group label { display:block; font-size:11px; font-weight:700; color:var(--charcoal); opacity:.75; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px; }
-    input[type="number"],input[type="text"] { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; color:var(--text); background:#fff; outline:none; }
-    input:focus { border-color:var(--yellow); box-shadow:0 0 0 3px rgba(240,165,0,.15); }
-    .save-tick { font-size:12px; color:var(--green); margin-left:8px; display:none; }
+/* ── upload ── */
+.drop-zone{border:2px dashed var(--border);border-radius:8px;padding:40px 20px;text-align:center;
+           cursor:pointer;transition:border-color .2s;margin-bottom:16px;background:#fff}
+.drop-zone:hover,.drop-zone.over{border-color:var(--yellow)}
+.drop-icon{font-size:2rem;margin-bottom:8px}
+.drop-label{font-size:.9rem;color:var(--muted)}
+.drop-sub{font-size:.78rem;color:var(--muted);margin-top:4px}
+input[type=file]{display:none}
 
-    /* KPI CARDS */
-    .kpi-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
-    .kpi { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px 20px; min-width:170px; }
-    .kpi-lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
-    .kpi-val { font-size:18px; font-weight:700; color:var(--charcoal); }
-    .kpi-val.pos { color:var(--green); }
-    .kpi-val.neg { color:var(--red); }
-    .kpi-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+/* ── alerts ── */
+.alert{padding:12px 16px;border-radius:6px;font-size:.85rem;margin-bottom:12px;line-height:1.5}
+.alert-ok{background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20}
+.alert-err{background:#fdecea;border:1px solid #f3c9c9;color:#8b1a1a}
+.alert-info{background:#e3f2fd;border:1px solid #90caf9;color:#1565c0}
 
-    /* TABLE */
-    .tbl-wrap { overflow-x:auto; border-radius:8px; border:1px solid var(--border); }
-    table { width:100%; border-collapse:collapse; font-size:12px; }
-    th { padding:10px 12px; background:var(--charcoal); color:#fff; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; text-align:left; }
-    td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
-    tr:last-child td { border-bottom:none; }
-    tr:hover td { background:var(--yellow-lt); }
-    .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .pos { color:var(--green); font-weight:700; }
-    .neg { color:var(--red); font-weight:700; }
-    .row-other td { background:var(--bg); color:var(--muted); font-style:italic; }
-    .row-total td { background:var(--charcoal); color:#fff; font-weight:700; }
-    .row-total td.pos { color:#a3e4b5; }
-    .row-total td.neg { color:#f9b4b4; }
-    .row-other:hover td,.row-total:hover td { filter:brightness(.97); }
+/* ── workload modal ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;
+          align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);
+       padding:28px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:20px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.mb14{margin-bottom:14px}
+.fld label{display:block;font-size:.75rem;font-weight:700;color:var(--muted);
+           text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.fld input,.fld select{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:5px;
+                        font-size:.88rem;font-family:inherit;outline:none}
+.fld input:focus,.fld select:focus{border-color:var(--yellow)}
+.modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;padding-top:16px;
+              border-top:1px solid var(--border)}
 
-    /* MODAL */
-    .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:200; align-items:center; justify-content:center; }
-    .modal-bg.open { display:flex; }
-    .modal { background:#fff; border-radius:10px; padding:32px 36px; width:100%; max-width:520px; box-shadow:0 8px 32px rgba(0,0,0,.18); }
-    .modal h3 { font-size:16px; font-weight:700; margin-bottom:20px; color:var(--charcoal); }
-    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
-    .mb16 { margin-bottom:16px; }
-    .modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
-    .tag-chip { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; background:var(--yellow-lt); border:1px solid #f0d080; cursor:pointer; margin:3px; }
-    .tag-chip:hover { background:var(--yellow); }
+/* ── history table ── */
+.hist-tbl{margin-top:20px}
+.hist-tbl table{font-size:.78rem}
 
-    /* MISC */
-    .empty { text-align:center; color:var(--muted); padding:48px; font-size:13px; }
-    .loading { text-align:center; color:var(--muted); padding:32px; font-size:13px; }
-    .section-title { font-size:14px; font-weight:700; color:var(--charcoal); margin-bottom:14px; }
-    .footer { margin-top:24px; font-size:11px; color:#aaa; text-align:center; }
-  </style>
+/* responsive */
+@media(max-width:700px){.kpi-row{flex-direction:column}.inputs-bar{flex-direction:column}}
+</style>
 </head>
 <body>
 
-<header class="header">
-  <div class="logo">
-    <div class="logo-circle">C</div>
-    <div class="logo-divider"></div>
-    <div>
-      <div class="logo-title">AWS FinOps Tracker</div>
-      <div class="logo-sub">Cochlear — Hosting Engineering</div>
-    </div>
-  </div>
+<div class="header">
+  <span class="header-logo">AWS FinOps Tracker</span>
+  <span class="header-sub">Cochlear — Hosting Engineering</span>
   <div class="header-right">
-    <div class="user-badge">
-      <div class="user-avatar" id="user-avatar">{{ display_name[0]|upper if display_name else '?' }}</div>
-      <span class="user-name">{{ display_name }}</span>
-    </div>
-    <a href="/AWSFinOps/logout" class="btn-logout">Log out</a>
+    <span>{{ display_name }}</span>
+    <button class="btn-logout" onclick="location.href='/AWSFinOps/logout'">Log out</button>
   </div>
-</header>
-
-<div class="page">
-  <div class="page-title">
-    <h1>AWS FinOps Tracker</h1>
-    <p>Upload monthly AWS CUR data, track spend per workload, compare against Telstra invoices, and monitor budget deviation. All amounts in USD.</p>
-  </div>
-
-  <div class="tab-bar">
-    <button class="tab-btn active" data-tab="runcost">📊 Run Cost</button>
-    <button class="tab-btn" data-tab="upload">📤 Upload CUR</button>
-    <button class="tab-btn" data-tab="workloads">⚙️ Workloads</button>
-  </div>
-
-  <div class="card">
-
-    <!-- ── RUN COST ── -->
-    <div class="tab-panel active" id="tab-runcost">
-
-      <div class="inputs-panel" id="inputs-panel" style="display:none">
-        <div class="inputs-panel-title">Monthly inputs — <span id="inputs-month-lbl"></span></div>
-        <div class="inputs-grid">
-          <div class="field-group">
-            <label>Telstra Invoice (USD)</label>
-            <input type="number" id="inp-invoice" placeholder="e.g. 316367" step="0.01"/>
-          </div>
-          <div class="field-group">
-            <label>Latest Forecast (USD)</label>
-            <input type="number" id="inp-forecast" placeholder="e.g. 281174" step="0.01"/>
-          </div>
-          <div>
-            <button class="btn btn-sm" id="save-inputs-btn">Save</button>
-            <span class="save-tick" id="save-tick">✓ Saved</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="month-row" id="month-row">
-        <span class="month-label">Month:</span>
-        <span style="font-size:12px;color:var(--muted)">No CUR data yet — upload a file first.</span>
-      </div>
-
-      <div class="kpi-row" id="kpi-row" style="display:none">
-        <div class="kpi"><div class="kpi-lbl">Total CUR Actual</div><div class="kpi-val" id="kpi-cur">—</div><div class="kpi-sub">USD · Raw AWS spend</div></div>
-        <div class="kpi"><div class="kpi-lbl">Telstra Invoice</div><div class="kpi-val" id="kpi-inv">—</div><div class="kpi-sub">USD</div></div>
-        <div class="kpi"><div class="kpi-lbl">FinOps Total</div><div class="kpi-val" id="kpi-fin">—</div><div class="kpi-sub">USD · Actual + Telstra diff</div></div>
-        <div class="kpi"><div class="kpi-lbl">Deviation vs Forecast</div><div class="kpi-val" id="kpi-dev">—</div><div class="kpi-sub" id="kpi-fc-sub">—</div></div>
-      </div>
-
-      <div id="runcost-wrap"><div class="empty">Select a month to load the run-cost breakdown.</div></div>
-    </div>
-
-    <!-- ── UPLOAD CUR ── -->
-    <div class="tab-panel" id="tab-upload">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <h2>Upload AWS CUR File</h2>
-          <p>Pivoted Excel (.xlsx) or CSV. Same format as the AWSCUR tab. Re-uploading the same period is safe — rows are upserted.</p>
-        </div>
-      </div>
-
-      <div class="drop-zone" id="drop-zone">
-        <span class="icon">☁️</span>
-        <p><strong>Drag &amp; drop the CUR file here</strong></p>
-        <p class="hint">or click to browse — .xlsx or .csv, max 50 MB</p>
-      </div>
-      <input type="file" id="cur-input" accept=".xlsx,.xlsm,.xls,.csv"/>
-
-      <div id="upload-status"></div>
-
-      <div id="history-section" style="display:none; margin-top:28px">
-        <div class="section-title">Upload History (last 20)</div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>File</th><th class="num">Rows</th><th class="num">Months</th><th>Uploaded by</th><th>At</th></tr></thead>
-            <tbody id="history-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── WORKLOADS ── -->
-    <div class="tab-panel" id="tab-workloads">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <h2>Workload Configuration</h2>
-          <p>Named workloads are tracked individually. Everything else rolls into <strong>Other</strong>.</p>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-outline btn-sm" id="discover-btn">Discover CUR tags</button>
-          <button class="btn btn-sm" id="add-wl-btn">+ Add workload</button>
-        </div>
-      </div>
-
-      <div id="tags-panel" style="display:none;margin-bottom:20px">
-        <div class="section-title" style="font-size:13px">CUR tags not yet tracked — click to add:</div>
-        <div id="tags-list"></div>
-      </div>
-
-      <div id="wl-wrap"><div class="loading">Loading…</div></div>
-    </div>
-
-  </div><!-- /card -->
-
-  <p class="footer">AWS FinOps Tracker · Cochlear Hosting Engineering · port 4020</p>
 </div>
 
-<!-- WORKLOAD MODAL -->
+<div class="tabs">
+  <button class="tab-btn active" data-tab="runcost">📊 Run Cost</button>
+  <button class="tab-btn" data-tab="upload">📤 Upload CUR</button>
+  <button class="tab-btn" data-tab="workloads">⚙️ Workloads</button>
+</div>
+
+<!-- ═══ RUN COST TAB ═══════════════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-runcost">
+
+  <div id="no-data-msg" class="no-data" style="display:none">
+    No CUR data yet. Go to <strong>Upload CUR</strong> to get started.
+  </div>
+
+  <!-- Month selector -->
+  <div class="controls" id="month-controls" style="display:none">
+    <span style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase">Month:</span>
+    <div class="month-pills" id="month-pills"></div>
+  </div>
+
+  <!-- Inputs: Telstra Invoice + Forecasts -->
+  <div class="inputs-bar" id="inputs-bar" style="display:none">
+    <div class="inp-group">
+      <label>Telstra Invoice (USD)</label>
+      <input type="number" id="inp-telstra" placeholder="e.g. 316367.61" step="0.01"/>
+    </div>
+    <div class="inp-group">
+      <label>Forecast — Run Cost</label>
+      <input type="number" id="inp-fc-run" placeholder="e.g. 281175" step="0.01"/>
+    </div>
+    <div class="inp-group">
+      <label>Forecast — Project</label>
+      <input type="number" id="inp-fc-proj" placeholder="e.g. 65830" step="0.01"/>
+    </div>
+    <button class="btn" id="save-inputs-btn">Save</button>
+    <span id="save-ok" style="display:none;font-size:.78rem;color:var(--green)">✓ Saved</span>
+  </div>
+
+  <!-- KPI cards -->
+  <div class="kpi-row" id="kpi-row" style="display:none">
+    <div class="kpi"><div class="kpi-label">Total CUR (Actual)</div><div class="kpi-val" id="kpi-cur">—</div></div>
+    <div class="kpi"><div class="kpi-label">Telstra Invoice</div><div class="kpi-val" id="kpi-telstra">—</div></div>
+    <div class="kpi"><div class="kpi-label">Run Cost Total (FinOps)</div><div class="kpi-val" id="kpi-run">—</div></div>
+    <div class="kpi"><div class="kpi-label">Project Total (FinOps)</div><div class="kpi-val" id="kpi-proj">—</div></div>
+    <div class="kpi"><div class="kpi-label">Grand Total</div><div class="kpi-val" id="kpi-grand">—</div></div>
+    <div class="kpi"><div class="kpi-label">Dev vs Run Forecast</div><div class="kpi-val" id="kpi-dev">—</div></div>
+  </div>
+
+  <!-- Main table -->
+  <div class="tbl-wrap" id="runcost-wrap"></div>
+</div>
+
+<!-- ═══ UPLOAD CUR TAB ════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-upload">
+  <h3 style="font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:6px">Upload AWS CUR File</h3>
+  <p style="color:var(--muted);font-size:.83rem;margin-bottom:20px">
+    Pivoted CSV or Excel (.xlsx). Columns: account_id, account_name, workloads_tag, outcomegroup_tag, category, then month columns.
+    Re-uploading the same period is safe — rows are upserted.
+  </p>
+  <div class="drop-zone" id="drop-zone">
+    <div class="drop-icon">☁️</div>
+    <div class="drop-label">Drag &amp; drop the CUR file here</div>
+    <div class="drop-sub">or click to browse — .xlsx or .csv, max 50 MB</div>
+  </div>
+  <input type="file" id="cur-input" accept=".xlsx,.xlsm,.xls,.csv"/>
+  <div id="upload-status"></div>
+
+  <div id="history-section" style="display:none" class="hist-tbl">
+    <h4 style="font-size:.85rem;font-weight:700;color:var(--navy);margin-bottom:10px">Upload History</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>File</th><th class="num">Rows</th><th class="num">Months</th><th>Uploaded by</th><th>At</th></tr></thead>
+        <tbody id="history-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WORKLOADS TAB ════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-workloads">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div>
+      <h3 style="font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:4px">Workload Configuration</h3>
+      <p style="font-size:.82rem;color:var(--muted)">Workloads are pre-loaded from the Excel tracker. Edit budgets and managers as needed.</p>
+    </div>
+    <button class="btn" id="add-wl-btn">+ Add workload</button>
+  </div>
+  <div id="wl-wrap"></div>
+</div>
+
+<!-- ═══ WORKLOAD MODAL ═══════════════════════════════════════════════════════ -->
 <div class="modal-bg" id="wl-modal">
   <div class="modal">
     <h3 id="modal-title">Add Workload</h3>
-    <div class="mb16">
-      <label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Workload Name *</label>
+    <div class="mb14 fld">
+      <label>Workload Name *</label>
       <input type="text" id="wl-name" placeholder="Must match workloads_tag in CUR exactly"/>
     </div>
     <div class="grid-2">
-      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Outcome Group</label><input type="text" id="wl-outcomegroup" placeholder="e.g. Corporate Supply Chain"/></div>
-      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Department</label><input type="text" id="wl-dept" placeholder="e.g. ISD"/></div>
+      <div class="fld"><label>Domain / Outcome Group</label><input type="text" id="wl-domain" placeholder="e.g. ISD"/></div>
+      <div class="fld">
+        <label>Cost Category</label>
+        <select id="wl-category">
+          <option value="Consumption">Consumption (Run Cost)</option>
+          <option value="Project">Project X-charge</option>
+        </select>
+      </div>
     </div>
     <div class="grid-2">
-      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Budget Manager</label><input type="text" id="wl-mgr" placeholder="e.g. Jan Willems"/></div>
-      <div><label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Monthly Budget (USD)</label><input type="number" id="wl-budget" placeholder="e.g. 99995" step="0.01"/></div>
+      <div class="fld"><label>Budget Manager</label><input type="text" id="wl-mgr" placeholder="e.g. Jan Willems"/></div>
+      <div class="fld"><label>Monthly Budget (USD)</label><input type="number" id="wl-budget" placeholder="e.g. 9999" step="0.01"/></div>
     </div>
-    <div class="mb16">
-      <label style="display:block;font-size:11px;font-weight:700;color:var(--charcoal);opacity:.75;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Description</label>
+    <div class="mb14 fld">
+      <label>Description</label>
       <input type="text" id="wl-desc" placeholder="Optional notes"/>
     </div>
     <div class="alert alert-err" id="modal-err" style="display:none"></div>
@@ -297,26 +265,9 @@
 
 <script>
 const API = "/AWSFinOps/api";
-let months = [], selMonth = null, editName = null;
+let selMonth = null;
 
-// ── Utilities ────────────────────────────────────────────────────────────────
-function usd(v) {
-  if (v === null || v === undefined) return "—";
-  const n = Math.round(typeof v === "number" ? v : parseFloat(String(v).replace(/,/g,"")));
-  return isNaN(n) || n === 0 ? "—" : "$" + n.toLocaleString("en-US");
-}
-function dev(v) {
-  if (v === null || v === undefined) return "—";
-  const n = Math.round(v);
-  if (isNaN(n)) return "—";
-  return (n >= 0 ? "+" : "") + "$" + Math.abs(n).toLocaleString("en-US") + (n > 0 ? " over" : n < 0 ? " under" : "");
-}
-function devCls(v) { return v > 0 ? "neg" : v < 0 ? "pos" : ""; }
-function monthLabel(m) {
-  return new Date(m + "T00:00:00").toLocaleString("en-AU", {month:"short", year:"numeric"});
-}
-
-// ── Tabs ─────────────────────────────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -324,141 +275,218 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "workloads") loadWorkloads();
-    if (btn.dataset.tab === "upload") loadHistory();
   });
 });
 
+function switchTab(tab) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab));
+}
+
+// ── Formatting ────────────────────────────────────────────────────────────────
+const fmt = v => v == null ? "—" : "$" + Math.round(v).toLocaleString("en-US");
+const fmtDec = v => v == null ? "—" : "$" + v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+function devCell(v) {
+  if (v == null) return '<td class="num">—</td>';
+  const cls = v > 0 ? "dev-pos" : v < 0 ? "dev-neg" : "";
+  const sign = v > 0 ? "+" : "";
+  return `<td class="num ${cls}">${sign}${fmt(v)}</td>`;
+}
+
 // ── Months ────────────────────────────────────────────────────────────────────
 async function loadMonths() {
-  try {
-    const d = await fetch(API + "/months").then(r => r.json());
-    months = d.months || [];
-    renderMonthRow();
-    if (months.length) selectMonth(months[months.length - 1]);
-  } catch(e) { console.error(e); }
-}
+  const d = await fetch(API + "/months").then(r => r.json());
+  const months = d.months || [];
+  const pills = document.getElementById("month-pills");
+  pills.innerHTML = "";
 
-function renderMonthRow() {
-  const row = document.getElementById("month-row");
-  row.innerHTML = '<span class="month-label">Month:</span>';
   if (!months.length) {
-    row.innerHTML += '<span style="font-size:12px;color:var(--muted)">No CUR data yet.</span>';
+    document.getElementById("no-data-msg").style.display = "block";
+    ["month-controls","inputs-bar","kpi-row"].forEach(id =>
+      document.getElementById(id).style.display = "none");
+    document.getElementById("runcost-wrap").innerHTML = "";
     return;
   }
+
+  document.getElementById("no-data-msg").style.display = "none";
+  ["month-controls","inputs-bar","kpi-row"].forEach(id =>
+    document.getElementById(id).style.display = "");
+
   months.forEach(m => {
-    const p = document.createElement("button");
-    p.className = "mpill" + (m === selMonth ? " active" : "");
-    p.textContent = monthLabel(m);
-    p.onclick = () => selectMonth(m);
-    row.appendChild(p);
+    const btn = document.createElement("button");
+    btn.className = "month-pill";
+    btn.dataset.month = m;
+    // Display as "May-25" style
+    const dt = new Date(m);
+    btn.textContent = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"}).replace(" ", "-");
+    btn.addEventListener("click", () => selectMonth(m));
+    pills.appendChild(btn);
   });
+
+  // Auto-select the latest month
+  if (!selMonth || !months.includes(selMonth)) {
+    selMonth = months[months.length - 1];
+  }
+  selectMonth(selMonth);
 }
 
-async function selectMonth(m) {
-  selMonth = m;
-  renderMonthRow();
-  await loadInputs(m);
-  await loadRunCost(m);
+async function selectMonth(month) {
+  selMonth = month;
+  document.querySelectorAll(".month-pill").forEach(p =>
+    p.classList.toggle("active", p.dataset.month === month));
+  await loadInputs(month);
+  await loadRunCost(month);
 }
 
 // ── Monthly inputs ────────────────────────────────────────────────────────────
-async function loadInputs(m) {
-  document.getElementById("inputs-panel").style.display = "block";
-  document.getElementById("inputs-month-lbl").textContent =
-    new Date(m + "T00:00:00").toLocaleString("en-AU", {month:"long", year:"numeric"});
-  try {
-    const d = await fetch(`${API}/monthly-inputs/${m}`).then(r => r.json());
-    document.getElementById("inp-invoice").value  = d.telstra_invoice || "";
-    document.getElementById("inp-forecast").value = d.forecast || "";
-  } catch(e) {}
+async function loadInputs(month) {
+  const d = await fetch(`${API}/monthly-inputs/${month}`).then(r => r.json());
+  document.getElementById("inp-telstra").value  = d.telstra_invoice  || "";
+  document.getElementById("inp-fc-run").value   = d.forecast_run     || "";
+  document.getElementById("inp-fc-proj").value  = d.forecast_project || "";
+  document.getElementById("save-ok").style.display = "none";
 }
 
 document.getElementById("save-inputs-btn").addEventListener("click", async () => {
   if (!selMonth) return;
-  const body = {
-    telstra_invoice: document.getElementById("inp-invoice").value || null,
-    forecast:        document.getElementById("inp-forecast").value || null,
-  };
   await fetch(`${API}/monthly-inputs/${selMonth}`, {
-    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body),
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      telstra_invoice:  document.getElementById("inp-telstra").value  || null,
+      forecast_run:     document.getElementById("inp-fc-run").value   || null,
+      forecast_project: document.getElementById("inp-fc-proj").value  || null,
+    }),
   });
-  const tick = document.getElementById("save-tick");
-  tick.style.display = "inline";
-  setTimeout(() => tick.style.display = "none", 2000);
+  document.getElementById("save-ok").style.display = "inline";
   await loadRunCost(selMonth);
 });
 
-// ── Run Cost ──────────────────────────────────────────────────────────────────
-async function loadRunCost(m) {
-  document.getElementById("runcost-wrap").innerHTML = '<div class="loading">⏳ Computing…</div>';
-  document.getElementById("kpi-row").style.display = "none";
-  try {
-    const d = await fetch(`${API}/run-cost?month=${m}`).then(r => r.json());
-    renderRunCost(d);
-  } catch(e) {
-    document.getElementById("runcost-wrap").innerHTML = `<div class="alert alert-err">Error: ${e.message}</div>`;
-  }
-}
-
-function renderRunCost(d) {
-  // KPIs
-  document.getElementById("kpi-row").style.display = "flex";
-  document.getElementById("kpi-cur").textContent = usd(d.total_cur_actual);
-  document.getElementById("kpi-inv").textContent = d.telstra_invoice ? usd(d.telstra_invoice) : "Not set";
-  document.getElementById("kpi-fin").textContent = usd(d.total_finops);
-
-  const devEl = document.getElementById("kpi-dev");
-  if (d.deviation_to_forecast !== null && d.deviation_to_forecast !== undefined) {
-    devEl.textContent  = dev(d.deviation_to_forecast);
-    devEl.className    = "kpi-val " + devCls(d.deviation_to_forecast);
-    document.getElementById("kpi-fc-sub").textContent = "Forecast: " + usd(d.forecast);
-  } else {
-    devEl.textContent = "—"; devEl.className = "kpi-val";
-    document.getElementById("kpi-fc-sub").textContent = "No forecast set";
-  }
-
-  if (!d.rows || !d.rows.length) {
-    document.getElementById("runcost-wrap").innerHTML =
-      '<div class="empty">No workloads configured. Add workloads in the Workloads tab first.</div>';
-    return;
-  }
+// ── Run Cost table ────────────────────────────────────────────────────────────
+async function loadRunCost(month) {
+  const d = await fetch(`${API}/run-cost?month=${month}`).then(r => r.json());
+  if (d.error) { document.getElementById("runcost-wrap").innerHTML = `<div class="alert alert-err">${d.error}</div>`; return; }
 
   const hasTelstra = !!d.telstra_invoice;
-  let body = "";
-  d.rows.forEach(r => {
+
+  // KPI cards
+  document.getElementById("kpi-cur").textContent     = fmt(d.total_cur);
+  document.getElementById("kpi-telstra").textContent  = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
+  document.getElementById("kpi-run").textContent      = fmt(d.total_consumption_total);
+  document.getElementById("kpi-proj").textContent     = fmt(d.total_project_total);
+  document.getElementById("kpi-grand").textContent    = fmt(d.grand_total);
+
+  const devEl = document.getElementById("kpi-dev");
+  if (d.deviation_run != null) {
+    devEl.textContent  = (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run);
+    devEl.className    = "kpi-val " + (d.deviation_run > 0 ? "red" : "green");
+  } else {
+    devEl.textContent = "No forecast";
+    devEl.className   = "kpi-val";
+  }
+
+  const tCols = hasTelstra
+    ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>`
+    : "";
+
+  let rows = "";
+
+  // Shared cost row (Telstra Invoice difference)
+  if (hasTelstra) {
+    rows += `<tr class="row-shared">
+      <td colspan="5"><strong>Shared Cost — Telstra Invoice Difference</strong></td>
+      <td class="num">—</td>
+      <td class="num"></td>
+      <td class="num"><strong>${fmt(d.telstra_diff_total)}</strong></td>
+      <td class="num"><strong>${fmt(d.telstra_invoice)}</strong></td>
+      <td class="num">—</td>
+    </tr>`;
+  }
+
+  // Consumption section
+  rows += `<tr class="section-hdr"><td colspan="${hasTelstra ? 10 : 8}">Run Cost — Consumption</td></tr>`;
+  d.consumption_rows.forEach(r => {
     const isOther = r.workload === "Other";
-    const dv = r.deviation_to_budget;
-    body += `<tr class="${isOther ? "row-other" : ""}">
+    rows += `<tr class="${isOther ? "row-other" : ""}">
       <td>${r.workload}</td>
-      <td>${r.outcomegroup || ""}</td>
-      <td>${r.budget_manager || ""}</td>
-      <td class="num">${r.budget_monthly ? usd(r.budget_monthly) : "—"}</td>
-      <td class="num">${usd(r.actual)}</td>
-      ${hasTelstra ? `<td class="num">${r.telstra_diff ? usd(r.telstra_diff) : "—"}</td><td class="num">${usd(r.total)}</td>` : ""}
-      <td class="num ${dv !== null && dv !== undefined ? devCls(dv) : ""}">${dv !== null && dv !== undefined ? dev(dv) : "—"}</td>
+      <td>${r.domain}</td>
+      <td>${r.budget_manager}</td>
+      <td>${r.description ? `<span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span>` : ""}</td>
+      <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
+      <td class="num">${fmt(r.actual)}</td>
+      ${hasTelstra ? `<td class="num">${r.telstra_diff ? fmt(r.telstra_diff) : "—"}</td><td class="num">${fmt(r.total)}</td>` : ""}
+      ${devCell(r.deviation)}
     </tr>`;
   });
 
-  const tvDev = d.deviation_to_forecast;
-  body += `<tr class="row-total">
-    <td colspan="3">TOTAL</td>
-    <td class="num">—</td>
-    <td class="num">${usd(d.total_cur_actual)}</td>
-    ${hasTelstra ? `<td class="num">${usd(d.total_telstra_diff)}</td><td class="num">${usd(d.total_finops)}</td>` : ""}
-    <td class="num ${tvDev !== null && tvDev !== undefined ? devCls(tvDev) : ""}">${tvDev !== null && tvDev !== undefined ? dev(tvDev) : "—"}</td>
+  // Consumption subtotal
+  rows += `<tr class="row-subtotal">
+    <td colspan="4"><strong>Total Run Cost</strong></td>
+    <td class="num">${fmt(d.total_consumption_total)}</td>
+    <td class="num">${fmt(d.total_consumption_actual)}</td>
+    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_consumption_total)}</strong></td>` : ""}
+    <td class="num ${d.deviation_run != null ? (d.deviation_run > 0 ? "dev-pos":"dev-neg") : ""}">${
+      d.deviation_run != null ? (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run) : "—"}</td>
   </tr>`;
 
-  const tCols = hasTelstra ? "<th class='num'>Telstra Diff</th><th class='num'>FinOps Total</th>" : "";
+  // Project section
+  if (d.project_rows.length) {
+    rows += `<tr class="section-hdr"><td colspan="${hasTelstra ? 10 : 8}">Project X-charge</td></tr>`;
+    d.project_rows.forEach(r => {
+      rows += `<tr>
+        <td>${r.workload}</td>
+        <td>${r.domain}</td>
+        <td>${r.budget_manager}</td>
+        <td>${r.description ? `<span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span>` : ""}</td>
+        <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
+        <td class="num">${fmt(r.actual)}</td>
+        ${hasTelstra ? `<td class="num">${r.telstra_diff ? fmt(r.telstra_diff) : "—"}</td><td class="num">${fmt(r.total)}</td>` : ""}
+        ${devCell(r.deviation)}
+      </tr>`;
+    });
+
+    rows += `<tr class="row-subtotal">
+      <td colspan="4"><strong>Total Project X-charge</strong></td>
+      <td class="num">${fmt(d.total_project_total)}</td>
+      <td class="num">${fmt(d.total_project_actual)}</td>
+      ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_project_total)}</strong></td>` : ""}
+      <td class="num ${d.deviation_project != null ? (d.deviation_project > 0 ? "dev-pos":"dev-neg") : ""}">${
+        d.deviation_project != null ? (d.deviation_project > 0 ? "+" : "") + fmt(d.deviation_project) : "—"}</td>
+    </tr>`;
+  }
+
+  // Grand total
+  rows += `<tr class="row-total">
+    <td colspan="4">GRAND TOTAL</td>
+    <td class="num">—</td>
+    <td class="num">${fmt(d.total_cur)}</td>
+    ${hasTelstra ? `<td class="num">${fmt(d.telstra_diff_total)}</td><td class="num">${fmt(d.grand_total)}</td>` : ""}
+    <td class="num">${fmt(d.grand_total)}</td>
+  </tr>`;
+
+  const dt = new Date(month);
+  const mLabel = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
+
   document.getElementById("runcost-wrap").innerHTML = `
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Workload</th><th>Outcome Group</th><th>Budget Manager</th>
-        <th class="num">Budget/mo</th><th class="num">Actual (CUR)</th>
-        ${tCols}<th class="num">Dev vs Budget</th></tr></thead>
-        <tbody>${body}</tbody>
+        <thead>
+          <tr>
+            <th style="min-width:140px">Workload</th>
+            <th style="min-width:120px">Domain</th>
+            <th style="min-width:120px">Budget Manager</th>
+            <th style="width:30px"></th>
+            <th class="num">Budget/mo</th>
+            <th class="num">${mLabel} Actual</th>
+            ${tCols}
+            <th class="num">Dev vs Budget</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
       </table>
     </div>
-    ${!hasTelstra ? '<p style="font-size:11px;color:var(--muted);margin-top:8px">Enter the Telstra invoice above to show Telstra Diff and FinOps Total columns.</p>' : ""}`;
+    ${!hasTelstra ? '<p style="font-size:.78rem;color:var(--muted);margin-top:10px">Enter the Telstra Invoice above to see Telstra Diff and FinOps Total columns.</p>' : ""}`;
 }
 
 // ── Upload CUR ────────────────────────────────────────────────────────────────
@@ -472,10 +500,7 @@ dropZone.addEventListener("drop", e => {
   e.preventDefault(); dropZone.classList.remove("over");
   if (e.dataTransfer.files[0]) uploadCUR(e.dataTransfer.files[0]);
 });
-curInput.addEventListener("change", () => {
-  if (curInput.files[0]) uploadCUR(curInput.files[0]);
-  curInput.value = "";
-});
+curInput.addEventListener("change", () => { if (curInput.files[0]) uploadCUR(curInput.files[0]); curInput.value = ""; });
 
 async function uploadCUR(file) {
   const st = document.getElementById("upload-status");
@@ -483,116 +508,82 @@ async function uploadCUR(file) {
   const fd = new FormData();
   fd.append("file", file);
   try {
-    const res  = await fetch(API + "/upload-cur", { method:"POST", body:fd });
+    const res  = await fetch(API + "/upload-cur", {method:"POST", body:fd});
     const data = await res.json();
-    if (!res.ok || data.error) {
-      st.innerHTML = `<div class="alert alert-err">❌ ${data.error}</div>`;
-      return;
-    }
-    const warns = data.errors && data.errors.length
-      ? `<br/><small>Warnings: ${data.errors.join("; ")}</small>` : "";
-    const wlMsg = data.workloads_added > 0
-      ? `<br/><small>✨ ${data.workloads_added} new workload${data.workloads_added>1?"s":""} auto-added from CUR tags.</small>` : "";
-    st.innerHTML = `<div class="alert alert-ok">
-      ✅ <strong>${file.name}</strong> ingested.<br/>
-      ${data.rows_upserted.toLocaleString()} rows upserted across ${data.months_found} months.${wlMsg}${warns}
-    </div>`;
+    if (!res.ok || data.error) { st.innerHTML = `<div class="alert alert-err">❌ ${data.error}</div>`; return; }
+    const warns = data.errors && data.errors.length ? `<br/><small>⚠️ ${data.errors.join("; ")}</small>` : "";
+    st.innerHTML = `<div class="alert alert-ok">✅ <strong>${file.name}</strong> ingested — ${data.rows_upserted.toLocaleString()} rows across ${data.months_found} months.${warns}</div>`;
     await loadMonths();
-    await loadWorkloads();
     await loadHistory();
-    // Auto-switch to Run Cost tab and load latest month
     if (data.latest_month) {
-      document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "runcost"));
-      document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-runcost"));
-      selMonth = data.latest_month;
-      document.querySelectorAll(".month-pill").forEach(p => {
-        p.classList.toggle("active", p.dataset.month === selMonth);
-      });
-      await loadRunCost(selMonth);
+      switchTab("runcost");
+      await selectMonth(data.latest_month);
     }
-  } catch(e) {
-    st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`;
-  }
+  } catch(e) { st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`; }
 }
 
 async function loadHistory() {
-  try {
-    const d = await fetch(API + "/upload-history").then(r => r.json());
-    const rows = (d.history || []);
-    if (!rows.length) return;
-    document.getElementById("history-section").style.display = "block";
-    document.getElementById("history-body").innerHTML = rows.map(r =>
-      `<tr><td>${r.filename}</td><td class="num">${(r.rows_upserted||0).toLocaleString()}</td>
-       <td class="num">${r.months_found||0}</td><td>${r.uploaded_by||""}</td>
-       <td style="white-space:nowrap;font-size:11px">${r.uploaded_at||""}</td></tr>`
-    ).join("");
-  } catch(e) {}
+  const d = await fetch(API + "/upload-history").then(r => r.json()).catch(() => ({history:[]}));
+  const rows = d.history || [];
+  if (!rows.length) return;
+  document.getElementById("history-section").style.display = "block";
+  document.getElementById("history-body").innerHTML = rows.map(r =>
+    `<tr><td>${r.filename}</td><td class="num">${(r.rows_upserted||0).toLocaleString()}</td>
+     <td class="num">${r.months_found||0}</td><td>${r.uploaded_by||""}</td>
+     <td style="color:var(--muted)">${r.uploaded_at||""}</td></tr>`
+  ).join("");
 }
 
 // ── Workloads ─────────────────────────────────────────────────────────────────
 async function loadWorkloads() {
-  document.getElementById("wl-wrap").innerHTML = '<div class="loading">Loading…</div>';
-  try {
-    const d = await fetch(API + "/workloads").then(r => r.json());
-    renderWorkloads(d.workloads || []);
-  } catch(e) {
-    document.getElementById("wl-wrap").innerHTML = `<div class="alert alert-err">${e.message}</div>`;
-  }
-}
+  const d = await fetch(API + "/workloads").then(r => r.json());
+  const wls = d.workloads || [];
+  const consumption = wls.filter(w => w.cost_category === "Consumption");
+  const project     = wls.filter(w => w.cost_category === "Project");
 
-function renderWorkloads(wls) {
-  if (!wls.length) {
-    document.getElementById("wl-wrap").innerHTML =
-      '<div class="empty">No workloads yet. Click <strong>Discover CUR tags</strong> after uploading a CUR file, or add manually.</div>';
-    return;
-  }
+  const makeRows = list => list.map(w => `<tr>
+    <td><strong>${w.name}</strong></td>
+    <td>${w.domain||"—"}</td>
+    <td>${w.cost_category}</td>
+    <td>${w.budget_manager||"—"}</td>
+    <td class="num">${w.budget_monthly ? fmt(w.budget_monthly) : "—"}</td>
+    <td style="font-size:.78rem;color:var(--muted)">${w.description||""}</td>
+    <td style="white-space:nowrap">
+      <button class="btn btn-outline btn-sm" onclick='openEdit(${JSON.stringify(w)})'>Edit</button>
+      <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick='delWL(${JSON.stringify(w.name)})'>Del</button>
+    </td></tr>`).join("");
+
   document.getElementById("wl-wrap").innerHTML = `
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Name</th><th>Outcome Group</th><th>Department</th><th>Budget Manager</th>
-      <th class="num">Budget/mo</th><th>Description</th><th></th></tr></thead>
-      <tbody>${wls.map(w => `<tr>
-        <td><strong>${w.name}</strong></td>
-        <td>${w.outcomegroup||"—"}</td><td>${w.department||"—"}</td><td>${w.budget_manager||"—"}</td>
-        <td class="num">${w.budget_monthly ? usd(w.budget_monthly) : "—"}</td>
-        <td style="font-size:11px;color:var(--muted)">${w.description||""}</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-outline btn-sm" onclick='openEdit(${JSON.stringify(w)})'>Edit</button>
-          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick='delWL(${JSON.stringify(w.name)})'>Del</button>
-        </td></tr>`).join("")}
+      <thead><tr>
+        <th>Workload</th><th>Domain</th><th>Category</th><th>Budget Manager</th>
+        <th class="num">Budget/mo</th><th>Description</th><th></th>
+      </tr></thead>
+      <tbody>
+        <tr class="section-hdr"><td colspan="7">Consumption (Run Cost)</td></tr>
+        ${makeRows(consumption)}
+        <tr class="section-hdr"><td colspan="7">Project X-charge</td></tr>
+        ${makeRows(project)}
       </tbody>
     </table></div>`;
 }
 
 async function delWL(name) {
-  if (!confirm(`Delete workload "${name}"? It will roll into Other.`)) return;
+  if (!confirm(`Delete workload "${name}"? Its spend will roll into Other.`)) return;
   await fetch(`${API}/workloads/${encodeURIComponent(name)}`, {method:"DELETE"});
   loadWorkloads();
   if (selMonth) loadRunCost(selMonth);
 }
 
-document.getElementById("discover-btn").addEventListener("click", async () => {
-  const panel = document.getElementById("tags-panel");
-  const list  = document.getElementById("tags-list");
-  list.innerHTML = "Loading…"; panel.style.display = "block";
-  try {
-    const [t, w] = await Promise.all([
-      fetch(API + "/cur-tags").then(r => r.json()),
-      fetch(API + "/workloads").then(r => r.json()),
-    ]);
-    const existing = new Set((w.workloads||[]).map(x => x.name.toLowerCase()));
-    const newTags  = (t.tags||[]).filter(x => !existing.has(x.toLowerCase()));
-    list.innerHTML = newTags.length
-      ? newTags.map(t => `<span class="tag-chip" onclick='openAddPrefilled(${JSON.stringify(t)})'>${t}</span>`).join("")
-      : '<span style="font-size:12px;color:var(--muted)">All CUR tags are already configured.</span>';
-  } catch(e) { list.innerHTML = `<span style="color:var(--red)">${e.message}</span>`; }
-});
+// ── Workload Modal ────────────────────────────────────────────────────────────
+let editName = null;
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
 function clearModal() {
-  ["wl-name","wl-outcomegroup","wl-dept","wl-mgr","wl-budget","wl-desc"].forEach(id => {
+  ["wl-name","wl-domain","wl-mgr","wl-budget","wl-desc"].forEach(id => {
     document.getElementById(id).value = "";
-    if (id === "wl-name") document.getElementById(id).disabled = false;
   });
+  document.getElementById("wl-category").value = "Consumption";
+  document.getElementById("wl-name").disabled   = false;
   document.getElementById("modal-err").style.display = "none";
 }
 
@@ -603,22 +594,17 @@ function openAdd() {
   document.getElementById("wl-modal").classList.add("open");
 }
 
-function openAddPrefilled(name) {
-  openAdd();
-  document.getElementById("wl-name").value = name;
-}
-
 function openEdit(w) {
   editName = w.name;
   document.getElementById("modal-title").textContent = `Edit — ${w.name}`;
   clearModal();
-  document.getElementById("wl-name").value    = w.name;
-  document.getElementById("wl-name").disabled = true;
-  document.getElementById("wl-outcomegroup").value = w.outcomegroup || "";
-  document.getElementById("wl-dept").value    = w.department || "";
-  document.getElementById("wl-mgr").value     = w.budget_manager || "";
-  document.getElementById("wl-budget").value  = w.budget_monthly || "";
-  document.getElementById("wl-desc").value    = w.description || "";
+  document.getElementById("wl-name").value     = w.name;
+  document.getElementById("wl-name").disabled  = true;
+  document.getElementById("wl-domain").value   = w.domain || "";
+  document.getElementById("wl-category").value = w.cost_category || "Consumption";
+  document.getElementById("wl-mgr").value      = w.budget_manager || "";
+  document.getElementById("wl-budget").value   = w.budget_monthly || "";
+  document.getElementById("wl-desc").value     = w.description || "";
   document.getElementById("wl-modal").classList.add("open");
 }
 
@@ -635,8 +621,8 @@ document.getElementById("modal-save").addEventListener("click", async () => {
 
   const payload = {
     name,
-    outcomegroup:   document.getElementById("wl-outcomegroup").value.trim(),
-    department:     document.getElementById("wl-dept").value.trim(),
+    domain:         document.getElementById("wl-domain").value.trim(),
+    cost_category:  document.getElementById("wl-category").value,
     budget_manager: document.getElementById("wl-mgr").value.trim(),
     description:    document.getElementById("wl-desc").value.trim(),
     budget_monthly: document.getElementById("wl-budget").value || null,
@@ -644,7 +630,6 @@ document.getElementById("modal-save").addEventListener("click", async () => {
 
   const url    = editName ? `${API}/workloads/${encodeURIComponent(editName)}` : `${API}/workloads`;
   const method = editName ? "PUT" : "POST";
-
   try {
     const res  = await fetch(url, {method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
     const data = await res.json();
@@ -657,6 +642,7 @@ document.getElementById("modal-save").addEventListener("click", async () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 loadMonths();
+loadHistory();
 </script>
 </body>
 </html>
