@@ -496,23 +496,12 @@ async function loadRunCost(month) {
   }
   const aC = r => `<td class="num">${fmt(r.actual)}${mktBadge(r)}</td>`;
 
-  // Common column headers for Shared table (Shared Alloc column is empty/decorative)
-  const sharedHead = `<thead class="hd-shared"><tr>
-    <th style="min-width:140px">Workload</th>
-    <th style="min-width:120px">Domain</th>
-    <th style="min-width:140px">Budget Manager</th>
-    <th style="width:24px"></th>
-    <th class="num">Budget/mo</th>
-    <th class="num">${mLabel} Actual</th>
-    <th class="num">Shared Alloc</th>
-    <th class="num">Dev vs Budget</th>
-  </tr></thead>`;
-
-  // Column headers for Run/Project tables — Shared Alloc always visible; Telstra+FinOps only when invoice set
+  // All three tables share identical columns — Telstra Diff + FinOps Total appear/disappear together
   const telstraCols = hasTelstra
     ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>`
     : "";
-  function rpHead(cls) { return `<thead class="${cls}"><tr>
+
+  function allHead(cls) { return `<thead class="${cls}"><tr>
     <th style="min-width:140px">Workload</th>
     <th style="min-width:120px">Domain</th>
     <th style="min-width:140px">Budget Manager</th>
@@ -524,14 +513,18 @@ async function loadRunCost(month) {
     <th class="num">Dev vs Budget</th>
   </tr></thead>`; }
 
+  const sharedHead = allHead("hd-shared");
+  function rpHead(cls) { return allHead(cls); }
+
   function infoCell(r) {
     return r.description ? `<td><span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span></td>` : "<td></td>";
   }
 
-  // Telstra-only extra cells (Diff + Total)
+  // Telstra-only extra cells (Diff + Total) — Shared rows always get "—"
   const rpTelstra = hasTelstra
     ? r => `<td class="num">${fmt(r.telstra_diff)}</td><td class="num">${fmt(r.total)}</td>`
     : () => "";
+  const sharedTelstra = hasTelstra ? `<td class="num">—</td><td class="num">—</td>` : "";
 
   // ── Shared Cost table ─────────────────────────────────────────────────────
   let sRows = d.shared_rows.map(r => `<tr>
@@ -539,6 +532,7 @@ async function loadRunCost(month) {
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">—</td>
+    ${sharedTelstra}
     ${devCell(r.deviation)}
   </tr>`).join("");
   sRows += `<tr class="row-subtotal-shared">
@@ -546,6 +540,7 @@ async function loadRunCost(month) {
     <td class="num">—</td>
     <td class="num"><strong>${fmt(d.total_shared_actual)}</strong></td>
     <td class="num">—</td>
+    ${hasTelstra ? `<td class="num">—</td><td class="num">—</td>` : ""}
     <td class="num">—</td>
   </tr>`;
 
