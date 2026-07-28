@@ -9,10 +9,10 @@ DB_PATH = os.environ.get(
 # Workloads as defined in AWS_Run Cost tab rows 17-35 (Consumption) and 39-43 (Project)
 _SEED_WORKLOADS = [
     # name, domain, cost_category, budget_manager, description, budget_monthly
-    ("AWS Networks",      "ISD",                    "Consumption",       "Andy McLaughlin",          "",                                                              8799.00),
-    ("Billing",           "ISD",                    "Consumption",       "Jan Willems",              "Savings plans/Enterprise Support/ISD Marketplace e.g Okta",     21000.00),
-    ("Network F5",        "ISD",                    "Consumption",       "Andy McLaughlin",          "",                                                              1340.36),
-    ("Network Firewall",  "ISD",                    "Consumption",       "Andy McLaughlin",          "",                                                              1591.24),
+    ("AWS Networks",      "ISD",                    "Shared",            "Andy McLaughlin",          "",                                                              8799.00),
+    ("Billing",           "ISD",                    "Shared",            "Jan Willems",              "Savings plans/Enterprise Support/ISD Marketplace e.g Okta",     21000.00),
+    ("Network F5",        "ISD",                    "Shared",            "Andy McLaughlin",          "",                                                              1340.36),
+    ("Network Firewall",  "ISD",                    "Shared",            "Andy McLaughlin",          "",                                                              1591.24),
     ("Boomi-Integration", "Digital Technology",     "Consumption",       "Joseph Encomienda",        "",                                                              12783.20),
     ("Boomi-Gateway",     "Digital Technology",     "Consumption",       "Joseph Encomienda",        "",                                                              5022.80),
     ("Bunker Backups",    "ISD",                    "Consumption",       "Jan Willems",              "",                                                              24295.60),
@@ -95,6 +95,15 @@ def init_db():
             "note        TEXT,"
             "updated_at  DATETIME DEFAULT (datetime('now')),"
             "PRIMARY KEY (workload, month))"
+        )
+
+        # Migrate existing Shared Cost accounts from 'Consumption' → 'Shared'
+        _SHARED_ACCOUNTS = ("AWS Networks", "Billing", "Network F5", "Network Firewall")
+        conn.execute(
+            "UPDATE workloads SET cost_category='Shared' WHERE name IN ({}) AND cost_category='Consumption'".format(
+                ",".join("?" * len(_SHARED_ACCOUNTS))
+            ),
+            _SHARED_ACCOUNTS,
         )
 
         # Schema migrations for existing databases

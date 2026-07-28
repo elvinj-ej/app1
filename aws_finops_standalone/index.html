@@ -65,23 +65,43 @@ a{color:var(--yellow)}
 .btn-danger{background:#fdecea;color:var(--red);border:1px solid #f3c9c9}
 .btn-danger:hover{background:#f8d7d3}
 
+/* ── section colours ── */
+:root{
+  --col-shared:#1565C0;   /* blue   — Shared Cost  */
+  --col-run:#2B3752;      /* navy   — Run Cost      */
+  --col-project:#6A1B9A;  /* purple — Project       */
+  --col-shared-bg:#E3F2FD;
+  --col-run-bg:#EEF2F7;
+  --col-project-bg:#F3E5F5;
+}
+
+/* ── section label bands ── */
+.section-label{display:flex;align-items:center;gap:10px;margin:24px 0 8px;font-weight:700;font-size:.82rem;
+               text-transform:uppercase;letter-spacing:.5px}
+.section-label .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.dot-shared {background:var(--col-shared)}
+.dot-run    {background:var(--col-run)}
+.dot-project{background:var(--col-project)}
+
 /* ── table ── */
-.tbl-wrap{overflow-x:auto}
+.tbl-wrap{overflow-x:auto;margin-bottom:8px}
 table{width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;
       border:1px solid var(--border);border-radius:8px;overflow:hidden}
-thead tr{background:var(--navy);color:#fff}
+thead.hd-shared tr{background:var(--col-shared);color:#fff}
+thead.hd-run    tr{background:var(--col-run);color:#fff}
+thead.hd-project tr{background:var(--col-project);color:#fff}
 th{padding:10px 10px;text-align:left;font-weight:600;font-size:.76rem;
    text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
 th.num,td.num{text-align:right}
 td{padding:8px 10px;border-top:1px solid var(--border);vertical-align:middle}
 tbody tr:hover{background:var(--hover)}
 
-/* section header rows */
-tr.section-hdr td{background:#EEF2F7;font-weight:700;color:var(--navy);font-size:.78rem;
-                  text-transform:uppercase;letter-spacing:.4px;padding:6px 10px;border-top:2px solid var(--border)}
-tr.row-shared td{background:#FFF8E7;font-weight:600;color:#7A5C00}
+/* subtotal / total rows per section */
+tr.row-subtotal-shared  td{background:var(--col-shared-bg);font-weight:700;color:var(--col-shared)}
+tr.row-subtotal-run     td{background:var(--col-run-bg);font-weight:700;color:var(--col-run)}
+tr.row-subtotal-project td{background:var(--col-project-bg);font-weight:700;color:var(--col-project)}
 tr.row-other td{font-style:italic;color:var(--muted)}
-tr.row-total td{background:var(--navy);color:#fff;font-weight:700}
+tr.row-grand td{background:var(--col-run);color:#fff;font-weight:700}
 tr.row-subtotal td{background:#F0F4FA;font-weight:700;color:var(--navy)}
 
 .num{font-variant-numeric:tabular-nums}
@@ -195,8 +215,9 @@ input[type=file]{display:none}
   <div class="kpi-row" id="kpi-row" style="display:none">
     <div class="kpi"><div class="kpi-label">Total CUR (Actual)</div><div class="kpi-val" id="kpi-cur">—</div></div>
     <div class="kpi"><div class="kpi-label">Telstra Invoice</div><div class="kpi-val" id="kpi-telstra">—</div></div>
-    <div class="kpi"><div class="kpi-label">Run Cost Total (FinOps)</div><div class="kpi-val" id="kpi-run">—</div></div>
-    <div class="kpi"><div class="kpi-label">Project Total (FinOps)</div><div class="kpi-val" id="kpi-proj">—</div></div>
+    <div class="kpi" style="border-top:3px solid #1565C0"><div class="kpi-label">Shared Cost Pool</div><div class="kpi-val" id="kpi-shared">—</div></div>
+    <div class="kpi" style="border-top:3px solid #2B3752"><div class="kpi-label">Run Cost (FinOps)</div><div class="kpi-val" id="kpi-run">—</div></div>
+    <div class="kpi" style="border-top:3px solid #6A1B9A"><div class="kpi-label">Project (FinOps)</div><div class="kpi-val" id="kpi-proj">—</div></div>
     <div class="kpi"><div class="kpi-label">Grand Total</div><div class="kpi-val" id="kpi-grand">—</div></div>
     <div class="kpi"><div class="kpi-label">Dev vs Run Forecast</div><div class="kpi-val" id="kpi-dev">—</div></div>
   </div>
@@ -256,7 +277,8 @@ input[type=file]{display:none}
       <div class="fld">
         <label>Cost Category</label>
         <select id="wl-category">
-          <option value="Consumption">Consumption (Run Cost)</option>
+          <option value="Shared">Shared Cost</option>
+          <option value="Consumption">Run Cost (Consumption)</option>
           <option value="Project">Project X-charge</option>
         </select>
       </div>
@@ -406,39 +428,22 @@ async function loadRunCost(month) {
   if (d.error) { document.getElementById("runcost-wrap").innerHTML = `<div class="alert alert-err">${d.error}</div>`; return; }
 
   const hasTelstra = !!d.telstra_invoice;
+  const dt = new Date(month);
+  const mLabel = dt.toLocaleDateString("en-AU", {month:"short", year:"numeric"});
 
   // KPI cards
-  document.getElementById("kpi-cur").textContent     = fmt(d.total_cur);
-  document.getElementById("kpi-telstra").textContent  = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
-  document.getElementById("kpi-run").textContent      = fmt(d.total_consumption_total);
-  document.getElementById("kpi-proj").textContent     = fmt(d.total_project_total);
-  document.getElementById("kpi-grand").textContent    = fmt(d.grand_total);
+  document.getElementById("kpi-cur").textContent    = fmt(d.total_cur);
+  document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
+  document.getElementById("kpi-shared").textContent  = fmt(d.shared_pool);
+  document.getElementById("kpi-run").textContent     = fmt(d.total_consumption_finops);
+  document.getElementById("kpi-proj").textContent    = fmt(d.total_project_finops);
+  document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
 
   const devEl = document.getElementById("kpi-dev");
   if (d.deviation_run != null) {
-    devEl.textContent  = (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run);
-    devEl.className    = "kpi-val " + (d.deviation_run > 0 ? "red" : "green");
-  } else {
-    devEl.textContent = "No forecast";
-    devEl.className   = "kpi-val";
-  }
-
-  const tCols = hasTelstra
-    ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>`
-    : "";
-
-  let rows = "";
-
-  // Shared cost row (Telstra Invoice difference)
-  if (hasTelstra) {
-    rows += `<tr class="row-shared">
-      <td colspan="5"><strong>Shared Cost — Telstra Invoice Difference</strong></td>
-      <td class="num">—</td>
-      <td class="num"><strong>${fmt(d.telstra_diff_total)}</strong></td>
-      <td class="num"><strong>${fmt(d.telstra_invoice)}</strong></td>
-      <td class="num">—</td>
-    </tr>`;
-  }
+    devEl.textContent = (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run);
+    devEl.className   = "kpi-val " + (d.deviation_run > 0 ? "red" : "green");
+  } else { devEl.textContent = "No forecast"; devEl.className = "kpi-val"; }
 
   function mktBadge(r) {
     if (r.workload === "Other" || !r.actual_marketplace) return "";
@@ -449,94 +454,114 @@ async function loadRunCost(month) {
       : `MKT ${fmt(r.actual_marketplace)}`;
     return `<span class="${cls}" onclick='openMktModal(${JSON.stringify(r)})'>${label}</span>`;
   }
+  const aC = r => `<td class="num">${fmt(r.actual)}${mktBadge(r)}</td>`;
 
-  function makeActualCell(r) {
-    return `<td class="num">${fmt(r.actual)}${mktBadge(r)}</td>`;
+  // Common column headers for Shared table
+  const sharedHead = `<thead class="hd-shared"><tr>
+    <th style="min-width:140px">Workload</th>
+    <th style="min-width:120px">Domain</th>
+    <th style="min-width:140px">Budget Manager</th>
+    <th style="width:24px"></th>
+    <th class="num">Budget/mo</th>
+    <th class="num">${mLabel} Actual</th>
+    <th class="num">Dev vs Budget</th>
+  </tr></thead>`;
+
+  // Column headers for Run/Project tables
+  const rpCols = hasTelstra
+    ? `<th class="num">Shared Alloc</th><th class="num">Telstra Diff</th><th class="num">FinOps Total</th>`
+    : "";
+  function rpHead(cls) { return `<thead class="${cls}"><tr>
+    <th style="min-width:140px">Workload</th>
+    <th style="min-width:120px">Domain</th>
+    <th style="min-width:140px">Budget Manager</th>
+    <th style="width:24px"></th>
+    <th class="num">Budget/mo</th>
+    <th class="num">${mLabel} Actual</th>
+    ${rpCols}
+    <th class="num">Dev vs Budget</th>
+  </tr></thead>`; }
+
+  function infoCell(r) {
+    return r.description ? `<td><span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span></td>` : "<td></td>";
   }
 
-  // Consumption section
-  rows += `<tr class="section-hdr"><td colspan="${hasTelstra ? 10 : 8}">Run Cost — Consumption</td></tr>`;
-  d.consumption_rows.forEach(r => {
-    const isOther = r.workload === "Other";
-    rows += `<tr class="${isOther ? "row-other" : ""}">
-      <td>${r.workload}</td>
-      <td>${r.domain}</td>
-      <td>${r.budget_manager}</td>
-      <td>${r.description ? `<span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span>` : ""}</td>
-      <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
-      ${makeActualCell(r)}
-      ${hasTelstra ? `<td class="num">${r.telstra_diff ? fmt(r.telstra_diff) : "—"}</td><td class="num">${fmt(r.total)}</td>` : ""}
-      ${devCell(r.deviation)}
-    </tr>`;
-  });
+  // ── Shared Cost table ─────────────────────────────────────────────────────
+  let sRows = d.shared_rows.map(r => `<tr>
+    <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
+    ${aC(r)}
+    ${devCell(r.deviation)}
+  </tr>`).join("");
+  sRows += `<tr class="row-subtotal-shared">
+    <td colspan="4"><strong>Total Shared Cost</strong></td>
+    <td class="num">—</td>
+    <td class="num"><strong>${fmt(d.total_shared_actual)}</strong></td>
+    <td class="num">—</td>
+  </tr>`;
 
-  // Consumption subtotal
-  rows += `<tr class="row-subtotal">
+  // ── Run Cost table ────────────────────────────────────────────────────────
+  const rpExtra = hasTelstra
+    ? r => `<td class="num">${fmt(r.shared_alloc)}</td><td class="num">${fmt(r.telstra_diff)}</td><td class="num">${fmt(r.total)}</td>`
+    : () => "";
+
+  let rRows = d.consumption_rows.map(r => `<tr class="${r.workload==="Other"?"row-other":""}">
+    <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
+    ${aC(r)}${rpExtra(r)}${devCell(r.deviation)}
+  </tr>`).join("");
+  rRows += `<tr class="row-subtotal-run">
     <td colspan="4"><strong>Total Run Cost</strong></td>
     <td class="num">${fmt(d.total_consumption_budget)}</td>
     <td class="num">${fmt(d.total_consumption_actual)}</td>
-    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_consumption_total)}</strong></td>` : ""}
+    ${hasTelstra ? `<td class="num"></td><td class="num"></td><td class="num"><strong>${fmt(d.total_consumption_finops)}</strong></td>` : ""}
     <td class="num ${d.deviation_run != null ? (d.deviation_run > 0 ? "dev-pos":"dev-neg") : ""}">${
       d.deviation_run != null ? (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run) : "—"}</td>
   </tr>`;
 
-  // Project section
-  if (d.project_rows.length) {
-    rows += `<tr class="section-hdr"><td colspan="${hasTelstra ? 10 : 8}">Project X-charge</td></tr>`;
-    d.project_rows.forEach(r => {
-      rows += `<tr>
-        <td>${r.workload}</td>
-        <td>${r.domain}</td>
-        <td>${r.budget_manager}</td>
-        <td>${r.description ? `<span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span>` : ""}</td>
-        <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
-        ${makeActualCell(r)}
-        ${hasTelstra ? `<td class="num">${r.telstra_diff ? fmt(r.telstra_diff) : "—"}</td><td class="num">${fmt(r.total)}</td>` : ""}
-        ${devCell(r.deviation)}
-      </tr>`;
-    });
+  // ── Project table ─────────────────────────────────────────────────────────
+  let pRows = d.project_rows.map(r => `<tr>
+    <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
+    ${aC(r)}${rpExtra(r)}${devCell(r.deviation)}
+  </tr>`).join("");
+  pRows += `<tr class="row-subtotal-project">
+    <td colspan="4"><strong>Total Project X-charge</strong></td>
+    <td class="num">${fmt(d.total_project_budget)}</td>
+    <td class="num">${fmt(d.total_project_actual)}</td>
+    ${hasTelstra ? `<td class="num"></td><td class="num"></td><td class="num"><strong>${fmt(d.total_project_finops)}</strong></td>` : ""}
+    <td class="num ${d.deviation_project != null ? (d.deviation_project > 0 ? "dev-pos":"dev-neg") : ""}">${
+      d.deviation_project != null ? (d.deviation_project > 0 ? "+" : "") + fmt(d.deviation_project) : "—"}</td>
+  </tr>`;
 
-    rows += `<tr class="row-subtotal">
-      <td colspan="4"><strong>Total Project X-charge</strong></td>
-      <td class="num">${fmt(d.total_project_budget)}</td>
-      <td class="num">${fmt(d.total_project_actual)}</td>
-      ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_project_total)}</strong></td>` : ""}
-      <td class="num ${d.deviation_project != null ? (d.deviation_project > 0 ? "dev-pos":"dev-neg") : ""}">${
-        d.deviation_project != null ? (d.deviation_project > 0 ? "+" : "") + fmt(d.deviation_project) : "—"}</td>
-    </tr>`;
-  }
-
-  // Grand total
-  rows += `<tr class="row-total">
+  // ── Grand total row ───────────────────────────────────────────────────────
+  const rpGrandCols = hasTelstra ? 3 : 0;
+  const grandRow = `<tr class="row-grand">
     <td colspan="4">GRAND TOTAL</td>
     <td class="num">—</td>
-    <td class="num">${fmt(d.total_cur)}</td>
-    ${hasTelstra ? `<td class="num">${fmt(d.telstra_diff_total)}</td><td class="num">${fmt(d.grand_total)}</td>` : ""}
+    <td class="num">${fmt(d.total_consumption_actual + d.total_project_actual)}</td>
+    ${hasTelstra ? `<td class="num">${fmt(d.shared_pool)}</td><td class="num">${fmt(d.telstra_diff_total)}</td><td class="num">${fmt(d.grand_total)}</td>` : ""}
     <td class="num">—</td>
   </tr>`;
 
-  const dt = new Date(month);
-  const mLabel = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
+  const noTelstraNote = !hasTelstra
+    ? '<p style="font-size:.78rem;color:var(--muted);margin-top:8px">Enter the Telstra Invoice above to see Shared Alloc, Telstra Diff and FinOps Total columns.</p>'
+    : "";
 
   document.getElementById("runcost-wrap").innerHTML = `
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th style="min-width:140px">Workload</th>
-            <th style="min-width:120px">Domain</th>
-            <th style="min-width:120px">Budget Manager</th>
-            <th style="width:30px"></th>
-            <th class="num">Budget/mo</th>
-            <th class="num">${mLabel} Actual</th>
-            ${tCols}
-            <th class="num">Dev vs Budget</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+    <div class="section-label"><span class="dot dot-shared"></span>Shared Cost Accounts</div>
+    <div class="tbl-wrap"><table>${sharedHead}<tbody>${sRows}</tbody></table></div>
+
+    <div class="section-label" style="margin-top:20px"><span class="dot dot-run"></span>Run Cost — Consumption</div>
+    <div class="tbl-wrap"><table>${rpHead("hd-run")}<tbody>${rRows}</tbody></table></div>
+
+    <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>Project X-charge</div>
+    <div class="tbl-wrap"><table>${rpHead("hd-project")}<tbody>${pRows}</tbody></table></div>
+
+    <div class="tbl-wrap" style="margin-top:12px">
+      <table>${rpHead("hd-run")}<tbody>${grandRow}</tbody></table>
     </div>
-    ${!hasTelstra ? '<p style="font-size:.78rem;color:var(--muted);margin-top:10px">Enter the Telstra Invoice above to see Telstra Diff and FinOps Total columns.</p>' : ""}`;
+    ${noTelstraNote}`;
 }
 
 // ── Upload CUR ────────────────────────────────────────────────────────────────
@@ -588,13 +613,20 @@ async function loadHistory() {
 async function loadWorkloads() {
   const d = await fetch(API + "/workloads").then(r => r.json());
   const wls = d.workloads || [];
+  const shared      = wls.filter(w => w.cost_category === "Shared");
   const consumption = wls.filter(w => w.cost_category === "Consumption");
   const project     = wls.filter(w => w.cost_category === "Project");
+
+  const catBadge = c => ({
+    "Shared":      `<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700">Shared</span>`,
+    "Consumption": `<span style="background:#EEF2F7;color:#2B3752;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700">Run Cost</span>`,
+    "Project":     `<span style="background:#F3E5F5;color:#6A1B9A;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700">Project</span>`,
+  }[c] || c);
 
   const makeRows = list => list.map(w => `<tr>
     <td><strong>${w.name}</strong></td>
     <td>${w.domain||"—"}</td>
-    <td>${w.cost_category}</td>
+    <td>${catBadge(w.cost_category)}</td>
     <td>${w.budget_manager||"—"}</td>
     <td class="num">${w.budget_monthly ? fmt(w.budget_monthly) : "—"}</td>
     <td style="font-size:.78rem;color:var(--muted)">${w.description||""}</td>
@@ -605,14 +637,16 @@ async function loadWorkloads() {
 
   document.getElementById("wl-wrap").innerHTML = `
     <div class="tbl-wrap"><table>
-      <thead><tr>
+      <thead><tr style="background:var(--col-shared);color:#fff">
         <th>Workload</th><th>Domain</th><th>Category</th><th>Budget Manager</th>
         <th class="num">Budget/mo</th><th>Description</th><th></th>
       </tr></thead>
       <tbody>
-        <tr class="section-hdr"><td colspan="7">Consumption (Run Cost)</td></tr>
+        <tr class="section-hdr" style="color:var(--col-shared)"><td colspan="7">Shared Cost Accounts</td></tr>
+        ${makeRows(shared)}
+        <tr class="section-hdr" style="color:var(--col-run)"><td colspan="7">Run Cost — Consumption</td></tr>
         ${makeRows(consumption)}
-        <tr class="section-hdr"><td colspan="7">Project X-charge</td></tr>
+        <tr class="section-hdr" style="color:var(--col-project)"><td colspan="7">Project X-charge</td></tr>
         ${makeRows(project)}
       </tbody>
     </table></div>`;
