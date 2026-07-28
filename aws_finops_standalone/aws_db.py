@@ -88,6 +88,25 @@ def init_db():
             "uploaded_at   DATETIME DEFAULT (datetime('now')))"
         )
 
+        # Schema migrations for existing databases
+        existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
+        if "domain" not in existing_cols:
+            # Old schema used 'outcomegroup' — add domain column and copy data
+            conn.execute("ALTER TABLE workloads ADD COLUMN domain TEXT")
+            if "outcomegroup" in existing_cols:
+                conn.execute("UPDATE workloads SET domain = outcomegroup WHERE domain IS NULL")
+        if "cost_category" not in existing_cols:
+            conn.execute("ALTER TABLE workloads ADD COLUMN cost_category TEXT NOT NULL DEFAULT 'Consumption'")
+        if "sort_order" not in existing_cols:
+            conn.execute("ALTER TABLE workloads ADD COLUMN sort_order INTEGER DEFAULT 99")
+
+        # monthly_inputs migration: add forecast_run / forecast_project if missing
+        mi_cols = {r[1] for r in conn.execute("PRAGMA table_info(monthly_inputs)").fetchall()}
+        if "forecast_run" not in mi_cols:
+            conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_run REAL")
+        if "forecast_project" not in mi_cols:
+            conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_project REAL")
+
         # Seed workloads (INSERT OR IGNORE keeps existing budget edits)
         for i, (name, domain, cat, mgr, desc, budget) in enumerate(_SEED_WORKLOADS):
             conn.execute(
