@@ -674,8 +674,8 @@ def api_summary():
                     "telstra_invoice":    d["telstra_invoice"] or 0,
                     "forecast_run":       fc.get("forecast_run"),
                     "forecast_project":   fc.get("forecast_project"),
-                    "run_workloads":      [{"name": r["workload"], "actual": r["actual"]} for r in d["consumption_rows"] if r["workload"] != "Other"],
-                    "project_workloads":  [{"name": r["workload"], "actual": r["actual"]} for r in d["project_rows"]],
+                    "run_workloads":      [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["consumption_rows"] if r["workload"] != "Other"],
+                    "project_workloads":  [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["project_rows"]],
                 })
             except Exception as e:
                 log.warning(f"Summary compute error for {m}: {e}")
