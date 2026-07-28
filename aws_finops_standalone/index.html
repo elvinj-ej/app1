@@ -397,7 +397,6 @@ async function loadRunCost(month) {
     rows += `<tr class="row-shared">
       <td colspan="5"><strong>Shared Cost — Telstra Invoice Difference</strong></td>
       <td class="num">—</td>
-      <td class="num"></td>
       <td class="num"><strong>${fmt(d.telstra_diff_total)}</strong></td>
       <td class="num"><strong>${fmt(d.telstra_invoice)}</strong></td>
       <td class="num">—</td>
@@ -423,7 +422,7 @@ async function loadRunCost(month) {
   // Consumption subtotal
   rows += `<tr class="row-subtotal">
     <td colspan="4"><strong>Total Run Cost</strong></td>
-    <td class="num">${fmt(d.total_consumption_total)}</td>
+    <td class="num">${fmt(d.total_consumption_budget)}</td>
     <td class="num">${fmt(d.total_consumption_actual)}</td>
     ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_consumption_total)}</strong></td>` : ""}
     <td class="num ${d.deviation_run != null ? (d.deviation_run > 0 ? "dev-pos":"dev-neg") : ""}">${
@@ -448,7 +447,7 @@ async function loadRunCost(month) {
 
     rows += `<tr class="row-subtotal">
       <td colspan="4"><strong>Total Project X-charge</strong></td>
-      <td class="num">${fmt(d.total_project_total)}</td>
+      <td class="num">${fmt(d.total_project_budget)}</td>
       <td class="num">${fmt(d.total_project_actual)}</td>
       ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_project_total)}</strong></td>` : ""}
       <td class="num ${d.deviation_project != null ? (d.deviation_project > 0 ? "dev-pos":"dev-neg") : ""}">${
@@ -462,7 +461,7 @@ async function loadRunCost(month) {
     <td class="num">—</td>
     <td class="num">${fmt(d.total_cur)}</td>
     ${hasTelstra ? `<td class="num">${fmt(d.telstra_diff_total)}</td><td class="num">${fmt(d.grand_total)}</td>` : ""}
-    <td class="num">${fmt(d.grand_total)}</td>
+    <td class="num">—</td>
   </tr>`;
 
   const dt = new Date(month);

@@ -139,11 +139,13 @@ def compute(month: str) -> dict:
     }
     consumption_rows.append(other_row)
 
-    total_consumption_actual = sum(r["actual"] for r in consumption_rows)
-    total_project_actual     = sum(r["actual"] for r in project_rows)
-    total_consumption_total  = sum(r["total"]  for r in consumption_rows)
-    total_project_total      = sum(r["total"]  for r in project_rows)
-    grand_total              = total_consumption_total + total_project_total
+    total_consumption_actual  = sum(r["actual"]          for r in consumption_rows)
+    total_project_actual      = sum(r["actual"]          for r in project_rows)
+    total_consumption_total   = sum(r["total"]           for r in consumption_rows)
+    total_project_total       = sum(r["total"]           for r in project_rows)
+    total_consumption_budget  = sum(r["budget_monthly"]  for r in consumption_rows if r["budget_monthly"])
+    total_project_budget      = sum(r["budget_monthly"]  for r in project_rows     if r["budget_monthly"])
+    grand_total               = total_consumption_total + total_project_total
 
     return {
         "month":                   month,
@@ -152,10 +154,12 @@ def compute(month: str) -> dict:
         "forecast_run":            forecast_run,
         "forecast_project":        forecast_project,
         "total_cur":               total_cur,
-        "total_consumption_actual": total_consumption_actual,
-        "total_project_actual":    total_project_actual,
-        "total_consumption_total": total_consumption_total,
-        "total_project_total":     total_project_total,
+        "total_consumption_actual":  total_consumption_actual,
+        "total_project_actual":     total_project_actual,
+        "total_consumption_total":  total_consumption_total,
+        "total_project_total":      total_project_total,
+        "total_consumption_budget": total_consumption_budget,
+        "total_project_budget":     total_project_budget,
         "grand_total":             grand_total,
         "deviation_run":           (total_consumption_total - forecast_run)    if forecast_run    else None,
         "deviation_project":       (total_project_total     - forecast_project) if forecast_project else None,
