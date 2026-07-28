@@ -87,6 +87,15 @@ def init_db():
             "uploaded_by   TEXT,"
             "uploaded_at   DATETIME DEFAULT (datetime('now')))"
         )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS marketplace_adjustments ("
+            "workload    TEXT NOT NULL,"
+            "month       TEXT NOT NULL,"
+            "adjustment  REAL NOT NULL DEFAULT 0,"
+            "note        TEXT,"
+            "updated_at  DATETIME DEFAULT (datetime('now')),"
+            "PRIMARY KEY (workload, month))"
+        )
 
         # Schema migrations for existing databases
         existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}

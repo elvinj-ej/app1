@@ -549,6 +549,40 @@ def api_delete_workload(name):
     return jsonify({"ok": True})
 
 
+# ── API: marketplace adjustments ──────────────────────────────────────────────
+
+@app.route("/AWSFinOps/api/marketplace-adjustment", methods=["POST"])
+@login_required
+def api_save_marketplace_adjustment():
+    data = request.get_json(force=True)
+    workload = (data.get("workload") or "").strip()
+    month    = (data.get("month")    or "").strip()
+    if not workload or not month:
+        return jsonify({"error": "workload and month are required"}), 400
+    try:
+        adjustment = float(data.get("adjustment") or 0)
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    note = (data.get("note") or "").strip()
+
+    with get_conn() as conn:
+        if adjustment == 0 and not note:
+            conn.execute(
+                "DELETE FROM marketplace_adjustments WHERE workload=? AND month=?",
+                (workload, month),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO marketplace_adjustments (workload, month, adjustment, note) VALUES (?,?,?,?) "
+                "ON CONFLICT(workload, month) DO UPDATE SET "
+                "adjustment=excluded.adjustment, note=excluded.note, updated_at=datetime('now')",
+                (workload, month, adjustment, note or None),
+            )
+
+    log.info(f"Marketplace adjustment saved: {workload}/{month} adj={adjustment} by {session.get('username','')}")
+    return jsonify({"ok": True})
+
+
 # ── API: CUR tag discovery ─────────────────────────────────────────────────────
 
 @app.route("/AWSFinOps/api/cur-tags", methods=["GET"])

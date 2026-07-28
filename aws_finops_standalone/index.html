@@ -121,6 +121,20 @@ input[type=file]{display:none}
 .modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;padding-top:16px;
               border-top:1px solid var(--border)}
 
+/* ── marketplace badge ── */
+.mkt-badge{display:inline-flex;align-items:center;gap:3px;
+           font-size:.7rem;font-weight:700;padding:1px 5px;border-radius:3px;
+           background:#EDE7F6;color:#4527A0;cursor:pointer;white-space:nowrap;
+           border:1px solid #D1C4E9;margin-left:4px;vertical-align:middle}
+.mkt-badge:hover{background:#D1C4E9}
+.adj-badge{background:#E8F5E9;color:#1B5E20;border-color:#A5D6A7}
+.mkt-modal .modal{max-width:440px}
+.mkt-breakdown{background:#F5F6FA;border:1px solid var(--border);border-radius:6px;
+               padding:12px 14px;font-size:.82rem;margin-bottom:16px;line-height:1.8}
+.mkt-breakdown .lbl{color:var(--muted);font-size:.75rem;font-weight:700;text-transform:uppercase}
+.mkt-breakdown .val{float:right;font-variant-numeric:tabular-nums;font-weight:600}
+.mkt-breakdown hr{border:none;border-top:1px solid var(--border);margin:6px 0}
+
 /* ── history table ── */
 .hist-tbl{margin-top:20px}
 .hist-tbl table{font-size:.78rem}
@@ -259,6 +273,29 @@ input[type=file]{display:none}
     <div class="modal-footer">
       <button class="btn btn-outline" id="modal-cancel">Cancel</button>
       <button class="btn" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Marketplace Adjustment Modal -->
+<div class="modal-bg mkt-modal" id="mkt-modal">
+  <div class="modal">
+    <h3 id="mkt-modal-title">Marketplace Adjustment</h3>
+    <div class="mkt-breakdown" id="mkt-breakdown"></div>
+    <div class="mb14 fld">
+      <label>Adjustment Amount (USD)</label>
+      <input type="number" id="mkt-adj" step="0.01"
+             placeholder="Enter negative value to negate, e.g. -1234.56"/>
+    </div>
+    <div class="mb14 fld">
+      <label>Note / Reason</label>
+      <input type="text" id="mkt-note" placeholder="e.g. Vendor credit applied, one-off purchase"/>
+    </div>
+    <div class="alert alert-err" id="mkt-err" style="display:none"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-danger btn-sm" id="mkt-clear" style="margin-right:auto">Clear Adjustment</button>
+      <button class="btn btn-outline" id="mkt-cancel">Cancel</button>
+      <button class="btn" id="mkt-save">Save</button>
     </div>
   </div>
 </div>
@@ -403,6 +440,20 @@ async function loadRunCost(month) {
     </tr>`;
   }
 
+  function mktBadge(r) {
+    if (r.workload === "Other" || !r.actual_marketplace) return "";
+    const hasAdj = !!r.marketplace_adjustment;
+    const cls = hasAdj ? "mkt-badge adj-badge" : "mkt-badge";
+    const label = hasAdj
+      ? `MKT ${fmt(r.actual_marketplace)} / adj ${fmt(r.marketplace_adjustment)}`
+      : `MKT ${fmt(r.actual_marketplace)}`;
+    return `<span class="${cls}" onclick='openMktModal(${JSON.stringify(r)})'>${label}</span>`;
+  }
+
+  function makeActualCell(r) {
+    return `<td class="num">${fmt(r.actual)}${mktBadge(r)}</td>`;
+  }
+
   // Consumption section
   rows += `<tr class="section-hdr"><td colspan="${hasTelstra ? 10 : 8}">Run Cost — Consumption</td></tr>`;
   d.consumption_rows.forEach(r => {
@@ -413,7 +464,7 @@ async function loadRunCost(month) {
       <td>${r.budget_manager}</td>
       <td>${r.description ? `<span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span>` : ""}</td>
       <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
-      <td class="num">${fmt(r.actual)}</td>
+      ${makeActualCell(r)}
       ${hasTelstra ? `<td class="num">${r.telstra_diff ? fmt(r.telstra_diff) : "—"}</td><td class="num">${fmt(r.total)}</td>` : ""}
       ${devCell(r.deviation)}
     </tr>`;
@@ -439,7 +490,7 @@ async function loadRunCost(month) {
         <td>${r.budget_manager}</td>
         <td>${r.description ? `<span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span>` : ""}</td>
         <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
-        <td class="num">${fmt(r.actual)}</td>
+        ${makeActualCell(r)}
         ${hasTelstra ? `<td class="num">${r.telstra_diff ? fmt(r.telstra_diff) : "—"}</td><td class="num">${fmt(r.total)}</td>` : ""}
         ${devCell(r.deviation)}
       </tr>`;
@@ -638,6 +689,62 @@ document.getElementById("modal-save").addEventListener("click", async () => {
     if (selMonth) loadRunCost(selMonth);
   } catch(e) { errEl.textContent = e.message; errEl.style.display = "block"; }
 });
+
+// ── Marketplace Adjustment Modal ──────────────────────────────────────────────
+let mktRow = null;
+
+function openMktModal(r) {
+  mktRow = r;
+  document.getElementById("mkt-modal-title").textContent = `Marketplace Adjustment — ${r.workload}`;
+  document.getElementById("mkt-adj").value  = r.marketplace_adjustment || "";
+  document.getElementById("mkt-note").value = r.marketplace_adj_note   || "";
+  document.getElementById("mkt-err").style.display = "none";
+
+  const hasAdj = !!r.marketplace_adjustment;
+  const net = (r.actual_expense || 0) + (r.actual_marketplace || 0) + (r.marketplace_adjustment || 0);
+  document.getElementById("mkt-breakdown").innerHTML = `
+    <div><span class="lbl">Monthly Expense</span><span class="val">${fmt(r.actual_expense)}</span></div>
+    <div><span class="lbl">Marketplace</span><span class="val" style="color:#4527A0">${fmt(r.actual_marketplace)}</span></div>
+    ${hasAdj ? `<div><span class="lbl">Current Adjustment</span><span class="val" style="color:${r.marketplace_adjustment < 0 ? 'var(--green)' : 'var(--red)'}">${fmt(r.marketplace_adjustment)}</span></div>` : ""}
+    <hr/>
+    <div><span class="lbl">Net Actual Used</span><span class="val"><strong>${fmt(net)}</strong></span></div>
+    ${r.marketplace_adj_note ? `<div style="font-size:.75rem;color:var(--muted);margin-top:4px">Note: ${r.marketplace_adj_note}</div>` : ""}
+  `;
+  document.getElementById("mkt-modal").classList.add("open");
+}
+
+document.getElementById("mkt-cancel").addEventListener("click", () =>
+  document.getElementById("mkt-modal").classList.remove("open"));
+document.getElementById("mkt-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("mkt-modal"))
+    document.getElementById("mkt-modal").classList.remove("open");
+});
+
+document.getElementById("mkt-clear").addEventListener("click", async () => {
+  if (!mktRow) return;
+  await saveMktAdj(0, "");
+});
+
+document.getElementById("mkt-save").addEventListener("click", async () => {
+  const adj = parseFloat(document.getElementById("mkt-adj").value) || 0;
+  const note = document.getElementById("mkt-note").value.trim();
+  await saveMktAdj(adj, note);
+});
+
+async function saveMktAdj(adjustment, note) {
+  const errEl = document.getElementById("mkt-err");
+  try {
+    const res  = await fetch(`${API}/marketplace-adjustment`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({workload: mktRow.workload, month: selMonth, adjustment, note}),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || "Save failed."; errEl.style.display = "block"; return; }
+    document.getElementById("mkt-modal").classList.remove("open");
+    await loadRunCost(selMonth);
+  } catch(e) { errEl.textContent = e.message; errEl.style.display = "block"; }
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 loadMonths();

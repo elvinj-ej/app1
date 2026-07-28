@@ -1,16 +1,12 @@
 """
-Computation engine matching AWS_Run Cost tab logic:
+Computation engine matching AWS_Run Cost tab logic.
 
-For each month:
-  1. Actual per workload  = SUM(cur_data.amount WHERE category='monthly_expense' AND workloads_tag=name)
-  2. Total CUR            = SUM of all monthly_expense amounts for the month
-  3. Other (Consumption)  = Total CUR − SUM(named workload actuals)
-  4. Telstra Diff total   = Telstra Invoice − Total CUR
-  5. Telstra Diff per row = Diff_total × (row_actual / Total_CUR)
-  6. Total per row        = Actual + Telstra Diff
-  7. Deviation            = Total − Budget/mo  (positive = over budget)
-
-Cost categories: 'Consumption' (Run Cost rows 17-35) and 'Project' (rows 39-43).
+Actual per workload = monthly_expense + marketplace + marketplace_adjustment
+total_cur           = sum of all net actuals (used for Telstra Diff ratio)
+Telstra Diff total  = Telstra Invoice − total_cur
+Telstra Diff/row    = Diff_total × (row_actual / total_cur)
+Total/row           = actual + telstra_diff
+Deviation           = total − budget  (positive = over budget)
 """
 from __future__ import annotations
 from aws_db import get_conn
@@ -42,12 +38,27 @@ def get_monthly_input(month):
     return dict(row) if row else {"telstra_invoice": None, "forecast_run": None, "forecast_project": None}
 
 
+def _build_tag_map(rows):
+    """Group CUR rows into {tag: amount}."""
+    m: dict[str, float] = {}
+    for r in rows:
+        tag = (r["workloads_tag"] or "").strip()
+        m[tag] = m.get(tag, 0.0) + float(r["actual"] or 0)
+    return m
+
+
 def compute(month: str) -> dict:
     with get_conn() as conn:
-        # All monthly_expense amounts grouped by workloads_tag
-        cur_rows = conn.execute(
+        expense_rows = conn.execute(
             "SELECT workloads_tag, SUM(amount) AS actual "
             "FROM cur_data WHERE month=? AND category='monthly_expense' "
+            "GROUP BY workloads_tag",
+            (month,),
+        ).fetchall()
+
+        marketplace_rows = conn.execute(
+            "SELECT workloads_tag, SUM(amount) AS actual "
+            "FROM cur_data WHERE month=? AND category='marketplace' "
             "GROUP BY workloads_tag",
             (month,),
         ).fetchall()
@@ -62,15 +73,15 @@ def compute(month: str) -> dict:
             (month,),
         ).fetchone()
 
-    # Build tag → actual map (case-insensitive match)
-    tag_actual: dict[str, float] = {}
-    for r in cur_rows:
-        tag = (r["workloads_tag"] or "").strip()
-        tag_actual[tag] = float(r["actual"] or 0)
+        adj_rows = conn.execute(
+            "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?",
+            (month,),
+        ).fetchall()
 
-    total_cur = sum(tag_actual.values())
+    tag_expense    = _build_tag_map(expense_rows)
+    tag_marketplace = _build_tag_map(marketplace_rows)
+    adj_map = {r["workload"]: (float(r["adjustment"] or 0), r["note"] or "") for r in adj_rows}
 
-    # Match CUR tags to workload names (exact first, then case-insensitive)
     workload_names = {w["name"] for w in workloads}
 
     def resolve(tag: str) -> str | None:
@@ -78,17 +89,36 @@ def compute(month: str) -> dict:
             return tag
         return next((n for n in workload_names if n.lower() == tag.lower()), None)
 
-    workload_actual: dict[str, float] = {}
-    for tag, amt in tag_actual.items():
+    # Aggregate expense + marketplace per named workload
+    workload_expense:     dict[str, float] = {}
+    workload_marketplace: dict[str, float] = {}
+
+    for tag, amt in tag_expense.items():
         name = resolve(tag)
         if name:
-            workload_actual[name] = workload_actual.get(name, 0) + amt
+            workload_expense[name] = workload_expense.get(name, 0.0) + amt
 
-    named_total = sum(workload_actual.values())
-    other_actual = max(0.0, total_cur - named_total)
+    for tag, amt in tag_marketplace.items():
+        name = resolve(tag)
+        if name:
+            workload_marketplace[name] = workload_marketplace.get(name, 0.0) + amt
 
-    telstra_invoice = float((mi["telstra_invoice"] if mi else None) or 0)
-    forecast_run    = (mi["forecast_run"]    if mi else None)
+    # total_cur = all expense + all marketplace (net of adjustments)
+    total_expense_cur     = sum(tag_expense.values())
+    total_marketplace_cur = sum(tag_marketplace.values())
+    total_adj             = sum(a for a, _ in adj_map.values())
+    total_cur             = total_expense_cur + total_marketplace_cur + total_adj
+
+    named_expense     = sum(workload_expense.values())
+    named_marketplace = sum(workload_marketplace.values())
+    named_adj         = sum(adj_map.get(w["name"], (0.0, ""))[0] for w in workloads)
+    other_actual      = max(0.0,
+        (total_expense_cur - named_expense) +
+        (total_marketplace_cur - named_marketplace)
+    )
+
+    telstra_invoice  = float((mi["telstra_invoice"]  if mi else None) or 0)
+    forecast_run     = (mi["forecast_run"]     if mi else None)
     forecast_project = (mi["forecast_project"] if mi else None)
 
     telstra_diff_total = telstra_invoice - total_cur if telstra_invoice else 0.0
@@ -102,67 +132,80 @@ def compute(month: str) -> dict:
     project_rows = []
 
     for w in workloads:
-        actual = workload_actual.get(w["name"], 0.0)
+        expense     = workload_expense.get(w["name"], 0.0)
+        marketplace = workload_marketplace.get(w["name"], 0.0)
+        adj, adj_note = adj_map.get(w["name"], (0.0, ""))
+        actual = expense + marketplace + adj
         td     = tdiff(actual)
         total  = actual + td
         budget = float(w["budget_monthly"] or 0)
         row = {
-            "workload":       w["name"],
-            "domain":         w["domain"] or "",
-            "cost_category":  w["cost_category"],
-            "budget_manager": w["budget_manager"] or "",
-            "description":    w["description"] or "",
-            "budget_monthly": budget or None,
-            "actual":         actual,
-            "telstra_diff":   td,
-            "total":          total,
-            "deviation":      (total - budget) if budget else None,
+            "workload":          w["name"],
+            "domain":            w["domain"] or "",
+            "cost_category":     w["cost_category"],
+            "budget_manager":    w["budget_manager"] or "",
+            "description":       w["description"] or "",
+            "budget_monthly":    budget or None,
+            "actual_expense":    expense,
+            "actual_marketplace": marketplace,
+            "marketplace_adjustment": adj,
+            "marketplace_adj_note":   adj_note,
+            "actual":            actual,
+            "telstra_diff":      td,
+            "total":             total,
+            "deviation":         (total - budget) if budget else None,
         }
         if w["cost_category"] == "Project":
             project_rows.append(row)
         else:
             consumption_rows.append(row)
 
-    # Other row (untagged/unmatched CUR spend)
-    other_td = tdiff(other_actual)
+    # Other row — untagged/unmatched CUR spend (no adjustments applied)
+    other_td  = tdiff(other_actual)
     other_row = {
-        "workload":       "Other",
-        "domain":         "ALL",
-        "cost_category":  "Consumption",
-        "budget_manager": "",
-        "description":    "Untagged or unmatched CUR spend",
-        "budget_monthly": None,
-        "actual":         other_actual,
-        "telstra_diff":   other_td,
-        "total":          other_actual + other_td,
-        "deviation":      None,
+        "workload":           "Other",
+        "domain":             "ALL",
+        "cost_category":      "Consumption",
+        "budget_manager":     "",
+        "description":        "Untagged or unmatched CUR spend",
+        "budget_monthly":     None,
+        "actual_expense":     other_actual,
+        "actual_marketplace": 0.0,
+        "marketplace_adjustment": 0.0,
+        "marketplace_adj_note":   "",
+        "actual":             other_actual,
+        "telstra_diff":       other_td,
+        "total":              other_actual + other_td,
+        "deviation":          None,
     }
     consumption_rows.append(other_row)
 
-    total_consumption_actual  = sum(r["actual"]          for r in consumption_rows)
-    total_project_actual      = sum(r["actual"]          for r in project_rows)
-    total_consumption_total   = sum(r["total"]           for r in consumption_rows)
-    total_project_total       = sum(r["total"]           for r in project_rows)
-    total_consumption_budget  = sum(r["budget_monthly"]  for r in consumption_rows if r["budget_monthly"])
-    total_project_budget      = sum(r["budget_monthly"]  for r in project_rows     if r["budget_monthly"])
+    total_consumption_actual  = sum(r["actual"]         for r in consumption_rows)
+    total_project_actual      = sum(r["actual"]         for r in project_rows)
+    total_consumption_total   = sum(r["total"]          for r in consumption_rows)
+    total_project_total       = sum(r["total"]          for r in project_rows)
+    total_consumption_budget  = sum(r["budget_monthly"] for r in consumption_rows if r["budget_monthly"])
+    total_project_budget      = sum(r["budget_monthly"] for r in project_rows     if r["budget_monthly"])
     grand_total               = total_consumption_total + total_project_total
 
     return {
-        "month":                   month,
-        "telstra_invoice":         telstra_invoice,
-        "telstra_diff_total":      telstra_diff_total,
-        "forecast_run":            forecast_run,
-        "forecast_project":        forecast_project,
-        "total_cur":               total_cur,
-        "total_consumption_actual":  total_consumption_actual,
+        "month":                    month,
+        "telstra_invoice":          telstra_invoice,
+        "telstra_diff_total":       telstra_diff_total,
+        "forecast_run":             forecast_run,
+        "forecast_project":         forecast_project,
+        "total_cur":                total_cur,
+        "total_expense_cur":        total_expense_cur,
+        "total_marketplace_cur":    total_marketplace_cur,
+        "total_consumption_actual": total_consumption_actual,
         "total_project_actual":     total_project_actual,
         "total_consumption_total":  total_consumption_total,
         "total_project_total":      total_project_total,
         "total_consumption_budget": total_consumption_budget,
         "total_project_budget":     total_project_budget,
-        "grand_total":             grand_total,
-        "deviation_run":           (total_consumption_total - forecast_run)    if forecast_run    else None,
-        "deviation_project":       (total_project_total     - forecast_project) if forecast_project else None,
-        "consumption_rows":        consumption_rows,
-        "project_rows":            project_rows,
+        "grand_total":              grand_total,
+        "deviation_run":            (total_consumption_total - forecast_run)     if forecast_run     else None,
+        "deviation_project":        (total_project_total     - forecast_project) if forecast_project else None,
+        "consumption_rows":         consumption_rows,
+        "project_rows":             project_rows,
     }
