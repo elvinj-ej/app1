@@ -159,6 +159,14 @@ input[type=file]{display:none}
 .hist-tbl{margin-top:20px}
 .hist-tbl table{font-size:.78rem}
 
+/* ── MoM movement indicators ── */
+.mom{display:inline-flex;align-items:center;justify-content:center;
+     width:18px;height:18px;border-radius:3px;font-size:.8rem;font-weight:700;
+     margin-left:5px;vertical-align:middle;cursor:default;flex-shrink:0}
+.mom-up  {background:#fdecea;color:#C0392B}   /* cost rose >5% — red */
+.mom-down{background:#e8f5e9;color:#1A7A4A}   /* cost fell >5% — green */
+.mom-flat{background:#f0f0f0;color:#7A8194}   /* within ±5% — grey */
+
 /* ── summary chart ── */
 .chart-bar{transition:opacity .1s}
 .chart-bar:hover{opacity:.82}
@@ -485,6 +493,17 @@ async function loadRunCost(month) {
     devEl.className   = "kpi-val " + (d.deviation_run > 0 ? "red" : "green");
   } else { devEl.textContent = "No forecast"; devEl.className = "kpi-val"; }
 
+  const prev = d.prev_actuals || {};
+  function momIndicator(workload, actual) {
+    const p = prev[workload];
+    if (p == null || p === 0) return "";
+    const pct = (actual - p) / Math.abs(p) * 100;
+    const sign = pct > 0 ? "+" : "";
+    if (pct >  5) return `<span class="mom mom-up"   title="${sign}${pct.toFixed(1)}% vs last month">↑</span>`;
+    if (pct < -5) return `<span class="mom mom-down" title="${pct.toFixed(1)}% vs last month">↓</span>`;
+    return             `<span class="mom mom-flat"  title="${sign}${pct.toFixed(1)}% vs last month">→</span>`;
+  }
+
   function mktBadge(r) {
     if (r.workload === "Other" || !r.actual_marketplace) return "";
     const hasAdj = !!r.marketplace_adjustment;
@@ -546,7 +565,7 @@ async function loadRunCost(month) {
 
   // ── Run Cost table ────────────────────────────────────────────────────────
   let rRows = d.consumption_rows.map(r => `<tr class="${r.workload==="Other"?"row-other":""}">
-    <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td>${r.workload}${r.workload!=="Other" ? momIndicator(r.workload, r.actual) : ""}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>
@@ -558,8 +577,8 @@ async function loadRunCost(month) {
     <td class="num">${fmt(d.total_consumption_actual)}</td>
     <td class="num"></td>
     ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_consumption_finops)}</strong></td>` : ""}
-    <td class="num ${d.deviation_run != null ? (d.deviation_run > 0 ? "dev-pos":"dev-neg") : ""}">${
-      d.deviation_run != null ? (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run) : "—"}</td>
+    <td class="num ${d.deviation_run_vs_budget != null ? (d.deviation_run_vs_budget > 0 ? "dev-pos":"dev-neg") : ""}">${
+      d.deviation_run_vs_budget != null ? (d.deviation_run_vs_budget > 0 ? "+" : "") + fmt(d.deviation_run_vs_budget) : "—"}</td>
   </tr>`;
 
   // ── Project table ─────────────────────────────────────────────────────────
@@ -576,8 +595,8 @@ async function loadRunCost(month) {
     <td class="num">${fmt(d.total_project_actual)}</td>
     <td class="num"></td>
     ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_project_finops)}</strong></td>` : ""}
-    <td class="num ${d.deviation_project != null ? (d.deviation_project > 0 ? "dev-pos":"dev-neg") : ""}">${
-      d.deviation_project != null ? (d.deviation_project > 0 ? "+" : "") + fmt(d.deviation_project) : "—"}</td>
+    <td class="num ${d.deviation_proj_vs_budget != null ? (d.deviation_proj_vs_budget > 0 ? "dev-pos":"dev-neg") : ""}">${
+      d.deviation_proj_vs_budget != null ? (d.deviation_proj_vs_budget > 0 ? "+" : "") + fmt(d.deviation_proj_vs_budget) : "—"}</td>
   </tr>`;
 
   // ── Grand total row ───────────────────────────────────────────────────────

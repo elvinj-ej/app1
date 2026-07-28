@@ -395,13 +395,33 @@ def api_months():
 @app.route("/AWSFinOps/api/run-cost", methods=["GET"])
 @login_required
 def api_run_cost():
+    from datetime import datetime, timedelta
     month = request.args.get("month", "").strip()
+    months = get_available_months()
     if not month:
-        months = get_available_months()
-        month  = months[-1] if months else None
+        month = months[-1] if months else None
     if not month:
         return jsonify({"error": "No CUR data available."}), 404
-    return jsonify(compute(month))
+
+    data = compute(month)
+
+    # Previous month actuals for MoM movement indicators
+    try:
+        dt       = datetime.strptime(month, "%Y-%m-%d")
+        prev_dt  = (dt.replace(day=1) - timedelta(days=1)).replace(day=1)
+        prev_str = prev_dt.strftime("%Y-%m-%d")
+        if prev_str in months:
+            prev = compute(prev_str)
+            data["prev_actuals"] = {
+                r["workload"]: r["actual"]
+                for r in prev["consumption_rows"] + prev["project_rows"] + prev["shared_rows"]
+            }
+        else:
+            data["prev_actuals"] = {}
+    except Exception:
+        data["prev_actuals"] = {}
+
+    return jsonify(data)
 
 
 # ── API: monthly inputs ────────────────────────────────────────────────────────
