@@ -979,25 +979,25 @@ function renderChart() {
 
 function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, fcColor, worksKey) {
   const el = document.getElementById(elId);
-  const W = 400, H = 240, PL = 58, PR = 14, PT = 22, PB = 42;
+  const W = 900, H = 300, PL = 70, PR = 20, PT = 28, PB = 56;
   const cW = W - PL - PR, cH = H - PT - PB;
 
   const allVals = months.flatMap(m => [m[actualKey] || 0, m[fcKey] || 0]);
   const maxVal  = Math.max(...allVals);
   const yMax    = Math.ceil((maxVal * 1.15) / 50000) * 50000 || 100000;
-  const barW    = Math.min(30, Math.max(5, cW / months.length - 8));
   const slot    = cW / months.length;
+  const barW    = Math.min(48, Math.max(8, slot * 0.55));
 
-  // Grid + Y labels
+  // Grid + Y labels (5 gridlines)
   let grid = "", yLbls = "";
-  for (let i = 0; i <= 4; i++) {
-    const val = (yMax / 4) * i;
+  for (let i = 0; i <= 5; i++) {
+    const val = (yMax / 5) * i;
     const y   = PT + cH - (val / yMax) * cH;
-    grid  += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="#e1e0d9" stroke-width="1"/>`;
-    yLbls += `<text x="${PL-5}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#898781">$${(val/1000).toFixed(0)}k</text>`;
+    grid  += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="${i===0?"#c8c6be":"#e8e6de"}" stroke-width="${i===0?1.5:1}"/>`;
+    yLbls += `<text x="${PL-8}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="12" fill="#6b6960">$${(val/1000).toFixed(0)}k</text>`;
   }
 
-  // Bars + X labels
+  // Bars + rotated X labels
   let bars = "", xLbls = "";
   months.forEach((m, i) => {
     const xC  = PL + slot * i + slot / 2;
@@ -1007,17 +1007,23 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
       const h  = (val / yMax) * cH;
       const y  = PT + cH - h;
       const fc = m[fcKey];
-      // Over-forecast: show a light red overlay on the excess portion
       const overH = (fc != null && val > fc) ? ((val - fc) / yMax * cH) : 0;
-      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}"
-        fill="${barColor}" rx="2" data-month="${m.month}" data-actual-key="${actualKey}" data-fc-key="${fcKey}" data-works-key="${worksKey}"/>`;
+      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
+        fill="${barColor}" rx="3" data-month="${m.month}" data-actual-key="${actualKey}" data-fc-key="${fcKey}" data-works-key="${worksKey}"/>`;
       if (overH > 0)
-        bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${overH.toFixed(1)}"
-          fill="#C0392B" rx="2" opacity="0.22" style="pointer-events:none"/>`;
+        bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${overH.toFixed(1)}"
+          fill="#C0392B" rx="3" opacity="0.25" style="pointer-events:none"/>`;
+      // Value label on bar if tall enough
+      if (h > 22)
+        bars += `<text x="${xC.toFixed(1)}" y="${(y+14).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="600"
+          fill="rgba(255,255,255,0.9)" style="pointer-events:none">$${(val/1000).toFixed(0)}k</text>`;
     }
     const dt  = new Date(m.month);
-    const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"}).replace(" ", "-");
-    xLbls += `<text x="${xC.toFixed(1)}" y="${H-5}" text-anchor="middle" font-size="10" fill="#52514e">${lbl}</text>`;
+    const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"});
+    // Rotate labels -40° anchored at bottom of chart
+    xLbls += `<text transform="rotate(-40,${xC.toFixed(1)},${(PT+cH+10).toFixed(1)})"
+      x="${xC.toFixed(1)}" y="${(PT+cH+10).toFixed(1)}"
+      text-anchor="end" font-size="12" fill="#52514e">${lbl}</text>`;
   });
 
   // Forecast dashed line + dots
@@ -1028,19 +1034,19 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
     const xC = PL + slot * i + slot / 2;
     const y  = PT + cH - (val / yMax) * cH;
     fcPath += fcPath === "" ? `M${xC.toFixed(1)},${y.toFixed(1)}` : ` L${xC.toFixed(1)},${y.toFixed(1)}`;
-    fcDots += `<circle cx="${xC.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${fcColor}" stroke="#fff" stroke-width="1.5" style="pointer-events:none"/>`;
+    fcDots += `<circle cx="${xC.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${fcColor}" stroke="#fff" stroke-width="2" style="pointer-events:none"/>`;
   });
   const fcLine = fcPath
-    ? `<path d="${fcPath}" fill="none" stroke="${fcColor}" stroke-width="2" stroke-dasharray="5,3" stroke-linecap="round"/>${fcDots}`
+    ? `<path d="${fcPath}" fill="none" stroke="${fcColor}" stroke-width="2.5" stroke-dasharray="6,4" stroke-linecap="round"/>${fcDots}`
     : "";
 
-  // Inline legend
+  // Legend (top-left)
   const legend = `
-    <rect x="${PL}" y="5" width="10" height="8" fill="${barColor}" rx="1"/>
-    <text x="${PL+14}" y="13" font-size="10" fill="#52514e">Actual</text>
-    ${fcPath ? `<line x1="${PL+58}" y1="9" x2="${PL+72}" y2="9" stroke="${fcColor}" stroke-width="2" stroke-dasharray="4,2"/>
-    <circle cx="${PL+65}" cy="9" r="2.5" fill="${fcColor}"/>
-    <text x="${PL+76}" y="13" font-size="10" fill="#52514e">Forecast</text>` : ""}`;
+    <rect x="${PL}" y="6" width="12" height="10" fill="${barColor}" rx="2"/>
+    <text x="${PL+17}" y="15" font-size="12" fill="#52514e">Actual</text>
+    ${fcPath ? `<line x1="${PL+68}" y1="11" x2="${PL+84}" y2="11" stroke="${fcColor}" stroke-width="2.5" stroke-dasharray="5,3"/>
+    <circle cx="${PL+76}" cy="11" r="3" fill="${fcColor}"/>
+    <text x="${PL+90}" y="15" font-size="12" fill="#52514e">Forecast</text>` : ""}`;
 
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible"
     font-family="'Segoe UI',system-ui,sans-serif">
