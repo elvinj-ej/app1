@@ -625,6 +625,28 @@ def api_discover_workloads():
     return jsonify({"added": added})
 
 
+# ── API: summary ──────────────────────────────────────────────────────────────
+
+@app.route("/AWSFinOps/api/summary", methods=["GET"])
+@login_required
+def api_summary():
+    months = get_available_months()
+    result = []
+    for m in months:
+        try:
+            d = compute(m)
+            result.append({
+                "month":           m,
+                "run_finops":      d["total_consumption_finops"],
+                "project_finops":  d["total_project_finops"],
+                "grand_total":     d["grand_total"],
+                "telstra_invoice": d["telstra_invoice"] or 0,
+            })
+        except Exception as e:
+            log.warning(f"Summary compute error for {m}: {e}")
+    return jsonify({"months": result})
+
+
 # ── API: status ────────────────────────────────────────────────────────────────
 
 @app.route("/AWSFinOps/api/status", methods=["GET"])

@@ -159,6 +159,12 @@ input[type=file]{display:none}
 .hist-tbl{margin-top:20px}
 .hist-tbl table{font-size:.78rem}
 
+/* ── summary chart ── */
+.chart-bar{transition:opacity .1s}
+.chart-bar:hover{opacity:.82}
+.sum-legend{display:flex;gap:18px;font-size:.78rem;color:#52514e;margin-bottom:12px;align-items:center}
+.sum-legend-dot{width:12px;height:12px;border-radius:2px;flex-shrink:0}
+
 /* responsive */
 @media(max-width:700px){.kpi-row{flex-direction:column}.inputs-bar{flex-direction:column}}
 </style>
@@ -176,6 +182,7 @@ input[type=file]{display:none}
 
 <div class="tabs">
   <button class="tab-btn active" data-tab="runcost">📊 Run Cost</button>
+  <button class="tab-btn" data-tab="summary">📈 Summary</button>
   <button class="tab-btn" data-tab="upload">📤 Upload CUR</button>
   <button class="tab-btn" data-tab="workloads">⚙️ Workloads</button>
 </div>
@@ -224,6 +231,38 @@ input[type=file]{display:none}
 
   <!-- Main table -->
   <div class="tbl-wrap" id="runcost-wrap"></div>
+</div>
+
+<!-- ═══ SUMMARY TAB ══════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-summary">
+  <!-- Filter bar -->
+  <div class="controls" style="margin-bottom:16px;gap:16px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Financial Year:</span>
+      <div class="month-pills" id="fy-pills"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Months:</span>
+      <div class="month-pills" id="sum-month-pills"></div>
+    </div>
+  </div>
+  <!-- Summary KPI tiles -->
+  <div class="kpi-row" id="sum-kpi-row" style="margin-bottom:20px">
+    <div class="kpi" style="border-top:3px solid #2B3752"><div class="kpi-label">Run Cost Total</div><div class="kpi-val" id="sum-kpi-run">—</div></div>
+    <div class="kpi" style="border-top:3px solid #6A1B9A"><div class="kpi-label">Project Total</div><div class="kpi-val" id="sum-kpi-proj">—</div></div>
+    <div class="kpi"><div class="kpi-label">Grand Total</div><div class="kpi-val" id="sum-kpi-grand">—</div></div>
+    <div class="kpi"><div class="kpi-label">Months shown</div><div class="kpi-val" id="sum-kpi-months">—</div></div>
+    <div class="kpi"><div class="kpi-label">Avg Monthly Run Cost</div><div class="kpi-val" id="sum-kpi-avg">—</div></div>
+  </div>
+  <!-- Chart -->
+  <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:20px 16px 12px;position:relative">
+    <div id="chart-wrap" style="position:relative">
+      <div class="no-data" style="padding:40px">No data available. Upload a CUR file first.</div>
+    </div>
+    <!-- Tooltip (hidden by default) -->
+    <div id="chart-tooltip" style="display:none;position:absolute;background:rgba(27,35,51,.92);color:#fff;
+         border-radius:6px;padding:10px 14px;font-size:.78rem;pointer-events:none;z-index:10;min-width:180px;line-height:1.7"></div>
+  </div>
 </div>
 
 <!-- ═══ UPLOAD CUR TAB ════════════════════════════════════════════════════════ -->
@@ -334,6 +373,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "workloads") loadWorkloads();
+    if (btn.dataset.tab === "summary")   loadSummary();
   });
 });
 
@@ -456,7 +496,7 @@ async function loadRunCost(month) {
   }
   const aC = r => `<td class="num">${fmt(r.actual)}${mktBadge(r)}</td>`;
 
-  // Common column headers for Shared table
+  // Common column headers for Shared table (Shared Alloc column is empty/decorative)
   const sharedHead = `<thead class="hd-shared"><tr>
     <th style="min-width:140px">Workload</th>
     <th style="min-width:120px">Domain</th>
@@ -464,12 +504,13 @@ async function loadRunCost(month) {
     <th style="width:24px"></th>
     <th class="num">Budget/mo</th>
     <th class="num">${mLabel} Actual</th>
+    <th class="num">Shared Alloc</th>
     <th class="num">Dev vs Budget</th>
   </tr></thead>`;
 
-  // Column headers for Run/Project tables
-  const rpCols = hasTelstra
-    ? `<th class="num">Shared Alloc</th><th class="num">Telstra Diff</th><th class="num">FinOps Total</th>`
+  // Column headers for Run/Project tables — Shared Alloc always visible; Telstra+FinOps only when invoice set
+  const telstraCols = hasTelstra
+    ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>`
     : "";
   function rpHead(cls) { return `<thead class="${cls}"><tr>
     <th style="min-width:140px">Workload</th>
@@ -478,7 +519,8 @@ async function loadRunCost(month) {
     <th style="width:24px"></th>
     <th class="num">Budget/mo</th>
     <th class="num">${mLabel} Actual</th>
-    ${rpCols}
+    <th class="num">Shared Alloc</th>
+    ${telstraCols}
     <th class="num">Dev vs Budget</th>
   </tr></thead>`; }
 
@@ -486,11 +528,17 @@ async function loadRunCost(month) {
     return r.description ? `<td><span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span></td>` : "<td></td>";
   }
 
+  // Telstra-only extra cells (Diff + Total)
+  const rpTelstra = hasTelstra
+    ? r => `<td class="num">${fmt(r.telstra_diff)}</td><td class="num">${fmt(r.total)}</td>`
+    : () => "";
+
   // ── Shared Cost table ─────────────────────────────────────────────────────
   let sRows = d.shared_rows.map(r => `<tr>
     <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
+    <td class="num">—</td>
     ${devCell(r.deviation)}
   </tr>`).join("");
   sRows += `<tr class="row-subtotal-shared">
@@ -498,23 +546,23 @@ async function loadRunCost(month) {
     <td class="num">—</td>
     <td class="num"><strong>${fmt(d.total_shared_actual)}</strong></td>
     <td class="num">—</td>
+    <td class="num">—</td>
   </tr>`;
 
   // ── Run Cost table ────────────────────────────────────────────────────────
-  const rpExtra = hasTelstra
-    ? r => `<td class="num">${fmt(r.shared_alloc)}</td><td class="num">${fmt(r.telstra_diff)}</td><td class="num">${fmt(r.total)}</td>`
-    : () => "";
-
   let rRows = d.consumption_rows.map(r => `<tr class="${r.workload==="Other"?"row-other":""}">
     <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
-    ${aC(r)}${rpExtra(r)}${devCell(r.deviation)}
+    ${aC(r)}
+    <td class="num">${fmt(r.shared_alloc)}</td>
+    ${rpTelstra(r)}${devCell(r.deviation)}
   </tr>`).join("");
   rRows += `<tr class="row-subtotal-run">
     <td colspan="4"><strong>Total Run Cost</strong></td>
     <td class="num">${fmt(d.total_consumption_budget)}</td>
     <td class="num">${fmt(d.total_consumption_actual)}</td>
-    ${hasTelstra ? `<td class="num"></td><td class="num"></td><td class="num"><strong>${fmt(d.total_consumption_finops)}</strong></td>` : ""}
+    <td class="num"></td>
+    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_consumption_finops)}</strong></td>` : ""}
     <td class="num ${d.deviation_run != null ? (d.deviation_run > 0 ? "dev-pos":"dev-neg") : ""}">${
       d.deviation_run != null ? (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run) : "—"}</td>
   </tr>`;
@@ -523,24 +571,27 @@ async function loadRunCost(month) {
   let pRows = d.project_rows.map(r => `<tr>
     <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
-    ${aC(r)}${rpExtra(r)}${devCell(r.deviation)}
+    ${aC(r)}
+    <td class="num">${fmt(r.shared_alloc)}</td>
+    ${rpTelstra(r)}${devCell(r.deviation)}
   </tr>`).join("");
   pRows += `<tr class="row-subtotal-project">
     <td colspan="4"><strong>Total Project X-charge</strong></td>
     <td class="num">${fmt(d.total_project_budget)}</td>
     <td class="num">${fmt(d.total_project_actual)}</td>
-    ${hasTelstra ? `<td class="num"></td><td class="num"></td><td class="num"><strong>${fmt(d.total_project_finops)}</strong></td>` : ""}
+    <td class="num"></td>
+    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_project_finops)}</strong></td>` : ""}
     <td class="num ${d.deviation_project != null ? (d.deviation_project > 0 ? "dev-pos":"dev-neg") : ""}">${
       d.deviation_project != null ? (d.deviation_project > 0 ? "+" : "") + fmt(d.deviation_project) : "—"}</td>
   </tr>`;
 
   // ── Grand total row ───────────────────────────────────────────────────────
-  const rpGrandCols = hasTelstra ? 3 : 0;
   const grandRow = `<tr class="row-grand">
     <td colspan="4">GRAND TOTAL</td>
     <td class="num">—</td>
     <td class="num">${fmt(d.total_consumption_actual + d.total_project_actual)}</td>
-    ${hasTelstra ? `<td class="num">${fmt(d.shared_pool)}</td><td class="num">${fmt(d.telstra_diff_total)}</td><td class="num">${fmt(d.grand_total)}</td>` : ""}
+    <td class="num">${fmt(d.shared_pool)}</td>
+    ${hasTelstra ? `<td class="num">${fmt(d.telstra_diff_total)}</td><td class="num">${fmt(d.grand_total)}</td>` : ""}
     <td class="num">—</td>
   </tr>`;
 
@@ -778,6 +829,187 @@ async function saveMktAdj(adjustment, note) {
     document.getElementById("mkt-modal").classList.remove("open");
     await loadRunCost(selMonth);
   } catch(e) { errEl.textContent = e.message; errEl.style.display = "block"; }
+}
+
+// ── Summary ────────────────────────────────────────────────────────────────────
+let summaryData  = [];    // all months from /api/summary
+let sumSelFY     = null;  // null = All FYs
+let sumSelMonths = new Set(); // empty = all months in current FY
+
+function getFY(monthStr) {
+  const d = new Date(monthStr);
+  const m = d.getUTCMonth(); // 0=Jan … 6=Jul
+  return m >= 6 ? d.getUTCFullYear() + 1 : d.getUTCFullYear();
+}
+const fyLabel = fy => `FY${String(fy).slice(-2)}`;
+
+async function loadSummary() {
+  const d = await fetch(API + "/summary").then(r => r.json()).catch(() => ({months:[]}));
+  summaryData = d.months || [];
+  if (!summaryData.length) {
+    document.getElementById("chart-wrap").innerHTML = '<div class="no-data" style="padding:40px">No data available. Upload a CUR file first.</div>';
+    ["sum-kpi-run","sum-kpi-proj","sum-kpi-grand","sum-kpi-months","sum-kpi-avg"].forEach(id =>
+      document.getElementById(id).textContent = "—");
+    return;
+  }
+  const fySet  = new Set(summaryData.map(m => getFY(m.month)));
+  const fyList = [...fySet].sort();
+  if (!fySet.has(sumSelFY)) { sumSelFY = fyList[fyList.length - 1]; sumSelMonths.clear(); }
+  renderFYPills(fyList);
+  renderSummaryMonthPills();
+  renderChart();
+}
+
+function renderFYPills(fyList) {
+  const c = document.getElementById("fy-pills");
+  c.innerHTML = "";
+  const fySet = new Set(summaryData.map(m => getFY(m.month)));
+  const makeBtn = (label, fy) => {
+    const btn = document.createElement("button");
+    btn.className = "month-pill" + (sumSelFY === fy ? " active" : "");
+    btn.textContent = label;
+    btn.addEventListener("click", () => {
+      sumSelFY = fy; sumSelMonths.clear();
+      renderFYPills(fyList); renderSummaryMonthPills(); renderChart();
+    });
+    c.appendChild(btn);
+  };
+  makeBtn("All", null);
+  fyList.forEach(fy => makeBtn(fyLabel(fy), fy));
+}
+
+function getFYMonths() {
+  return sumSelFY === null
+    ? summaryData
+    : summaryData.filter(m => getFY(m.month) === sumSelFY);
+}
+
+function getFilteredMonths() {
+  const base = getFYMonths();
+  return sumSelMonths.size ? base.filter(m => sumSelMonths.has(m.month)) : base;
+}
+
+function renderSummaryMonthPills() {
+  const base = getFYMonths();
+  const c = document.getElementById("sum-month-pills");
+  c.innerHTML = "";
+  base.forEach(m => {
+    const btn = document.createElement("button");
+    const active = sumSelMonths.size === 0 || sumSelMonths.has(m.month);
+    btn.className = "month-pill" + (active ? " active" : "");
+    const dt = new Date(m.month);
+    btn.textContent = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"}).replace(" ", "-");
+    btn.addEventListener("click", () => {
+      if (sumSelMonths.size === 0) {
+        sumSelMonths.add(m.month);
+      } else if (sumSelMonths.has(m.month)) {
+        sumSelMonths.delete(m.month);
+      } else {
+        sumSelMonths.add(m.month);
+      }
+      renderSummaryMonthPills(); renderChart();
+    });
+    c.appendChild(btn);
+  });
+}
+
+function renderChart() {
+  const months = getFilteredMonths();
+  const wrap   = document.getElementById("chart-wrap");
+  if (!months.length) {
+    wrap.innerHTML = '<div class="no-data" style="padding:40px">No months match the selected filters.</div>';
+    updateSummaryKPIs([]);
+    return;
+  }
+  updateSummaryKPIs(months);
+
+  const W = 760, H = 320, PL = 80, PR = 20, PT = 30, PB = 50;
+  const cW = W - PL - PR, cH = H - PT - PB;
+  const maxVal = Math.max(...months.map(m => m.run_finops + m.project_finops));
+  const yMax   = Math.ceil((maxVal * 1.1) / 50000) * 50000 || 100000;
+  const barW   = Math.min(44, Math.max(8, cW / months.length - 10));
+  const slot   = cW / months.length;
+
+  let gridLines = "", yLabels = "";
+  for (let i = 0; i <= 5; i++) {
+    const val = (yMax / 5) * i;
+    const y   = PT + cH - (val / yMax) * cH;
+    gridLines += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="#e1e0d9" stroke-width="1"/>`;
+    yLabels   += `<text x="${PL-8}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#898781">$${(val/1000).toFixed(0)}k</text>`;
+  }
+
+  let bars = "", xLabels = "";
+  months.forEach((m, i) => {
+    const xC   = PL + slot * i + slot / 2;
+    const x    = xC - barW / 2;
+    const runH = Math.max(0, (m.run_finops / yMax) * cH);
+    const prjH = Math.max(0, (m.project_finops / yMax) * cH);
+    const prjY = PT + cH - prjH;
+    const runY = prjY - runH;
+    const esc  = v => String(v).replace(/"/g, "&quot;");
+
+    if (prjH > 1)
+      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${prjY.toFixed(1)}" width="${barW}" height="${prjH.toFixed(1)}" fill="#6A1B9A" rx="2"
+        data-month="${m.month}" data-run="${m.run_finops}" data-proj="${m.project_finops}" data-grand="${m.grand_total}" data-inv="${m.telstra_invoice||0}"/>`;
+    if (runH > 1)
+      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${runY.toFixed(1)}" width="${barW}" height="${runH.toFixed(1)}" fill="#2B3752" rx="2"
+        data-month="${m.month}" data-run="${m.run_finops}" data-proj="${m.project_finops}" data-grand="${m.grand_total}" data-inv="${m.telstra_invoice||0}"/>`;
+
+    const dt  = new Date(m.month);
+    const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"}).replace(" ", "-");
+    xLabels += `<text x="${xC.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="11" fill="#52514e">${lbl}</text>`;
+  });
+
+  wrap.innerHTML = `
+    <div class="sum-legend">
+      <span class="sum-legend-dot" style="background:#2B3752"></span>Run Cost (FinOps Total)
+      <span class="sum-legend-dot" style="background:#6A1B9A"></span>Project X-charge (FinOps Total)
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block;overflow:visible"
+         font-family="'Segoe UI',system-ui,sans-serif">
+      ${gridLines}${yLabels}${bars}${xLabels}
+    </svg>`;
+
+  wrap.querySelectorAll(".chart-bar").forEach(bar => {
+    bar.addEventListener("mouseenter", e => showBarTip(e, bar));
+    bar.addEventListener("mousemove",  e => posBarTip(e));
+    bar.addEventListener("mouseleave", ()  => { document.getElementById("chart-tooltip").style.display = "none"; });
+  });
+}
+
+function showBarTip(e, bar) {
+  const tip = document.getElementById("chart-tooltip");
+  const dt  = new Date(bar.dataset.month);
+  const lbl = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
+  const inv = +bar.dataset.inv;
+  tip.innerHTML = `<strong>${lbl}</strong><br/>
+    Run Cost: ${fmt(+bar.dataset.run)}<br/>
+    Project:  ${fmt(+bar.dataset.proj)}<br/>
+    Grand Total: ${fmt(+bar.dataset.grand)}` +
+    (inv ? `<br/>Telstra Invoice: ${fmt(inv)}` : "");
+  tip.style.display = "block";
+  posBarTip(e);
+}
+function posBarTip(e) {
+  const tip    = document.getElementById("chart-tooltip");
+  const parent = tip.offsetParent ? tip.offsetParent.getBoundingClientRect() : document.body.getBoundingClientRect();
+  let x = e.clientX - parent.left + 16;
+  let y = e.clientY - parent.top  - 10;
+  if (x + 210 > parent.width) x = e.clientX - parent.left - 220;
+  tip.style.left = x + "px";
+  tip.style.top  = y + "px";
+}
+
+function updateSummaryKPIs(months) {
+  const totalRun  = months.reduce((s, m) => s + (m.run_finops     || 0), 0);
+  const totalProj = months.reduce((s, m) => s + (m.project_finops || 0), 0);
+  const totalGrand= months.reduce((s, m) => s + (m.grand_total    || 0), 0);
+  const count     = months.length;
+  document.getElementById("sum-kpi-run").textContent    = fmt(totalRun);
+  document.getElementById("sum-kpi-proj").textContent   = fmt(totalProj);
+  document.getElementById("sum-kpi-grand").textContent  = fmt(totalGrand);
+  document.getElementById("sum-kpi-months").textContent = count;
+  document.getElementById("sum-kpi-avg").textContent    = count ? fmt(totalRun / count) : "—";
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
