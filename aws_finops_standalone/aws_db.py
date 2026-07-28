@@ -125,6 +125,29 @@ def init_db():
         if "forecast_project" not in mi_cols:
             conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_project REAL")
 
+        # Seed FY27 forecasts (INSERT OR IGNORE — user edits via the inputs bar are preserved)
+        # Jul–Dec 2026: Run=$305,144  Project=$97,800  (CNA $35.7k, MES $46k, Clark $3k, DataInsights $3.4k, Sonar $9.7k)
+        # Jan–Jun 2027: Run=$305,144  Project=$126,100 (CNA increases to $64k)
+        _FY27_FORECASTS = [
+            ("2026-07-01", 305144, 97800),
+            ("2026-08-01", 305144, 97800),
+            ("2026-09-01", 305144, 97800),
+            ("2026-10-01", 305144, 97800),
+            ("2026-11-01", 305144, 97800),
+            ("2026-12-01", 305144, 97800),
+            ("2027-01-01", 305144, 126100),
+            ("2027-02-01", 305144, 126100),
+            ("2027-03-01", 305144, 126100),
+            ("2027-04-01", 305144, 126100),
+            ("2027-05-01", 305144, 126100),
+            ("2027-06-01", 305144, 126100),
+        ]
+        for month, fc_run, fc_proj in _FY27_FORECASTS:
+            conn.execute(
+                "INSERT OR IGNORE INTO monthly_inputs (month, forecast_run, forecast_project) VALUES (?,?,?)",
+                (month, fc_run, fc_proj),
+            )
+
         # Seed workloads (INSERT OR IGNORE keeps existing budget edits)
         for i, (name, domain, cat, mgr, desc, budget) in enumerate(_SEED_WORKLOADS):
             conn.execute(

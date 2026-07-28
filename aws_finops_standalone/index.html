@@ -925,11 +925,18 @@ function renderChart() {
 
   const W = 760, H = 320, PL = 80, PR = 20, PT = 30, PB = 50;
   const cW = W - PL - PR, cH = H - PT - PB;
-  const maxVal = Math.max(...months.map(m => m.run_finops + m.project_finops));
+
+  // Scale must fit both actuals and forecasts
+  const allVals = months.flatMap(m => [
+    (m.run_finops||0) + (m.project_finops||0),
+    (m.forecast_run||0) + (m.forecast_project||0),
+  ]);
+  const maxVal = Math.max(...allVals);
   const yMax   = Math.ceil((maxVal * 1.1) / 50000) * 50000 || 100000;
-  const barW   = Math.min(44, Math.max(8, cW / months.length - 10));
+  const barW   = Math.min(44, Math.max(6, cW / months.length - 10));
   const slot   = cW / months.length;
 
+  // Grid
   let gridLines = "", yLabels = "";
   for (let i = 0; i <= 5; i++) {
     const val = (yMax / 5) * i;
@@ -938,42 +945,73 @@ function renderChart() {
     yLabels   += `<text x="${PL-8}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#898781">$${(val/1000).toFixed(0)}k</text>`;
   }
 
+  // Bars (actual data only)
   let bars = "", xLabels = "";
   months.forEach((m, i) => {
     const xC   = PL + slot * i + slot / 2;
     const x    = xC - barW / 2;
-    const runH = Math.max(0, (m.run_finops / yMax) * cH);
-    const prjH = Math.max(0, (m.project_finops / yMax) * cH);
+    const runH = m.run_finops  != null ? Math.max(0, (m.run_finops  / yMax) * cH) : 0;
+    const prjH = m.project_finops != null ? Math.max(0, (m.project_finops / yMax) * cH) : 0;
     const prjY = PT + cH - prjH;
     const runY = prjY - runH;
-    const esc  = v => String(v).replace(/"/g, "&quot;");
 
     if (prjH > 1)
       bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${prjY.toFixed(1)}" width="${barW}" height="${prjH.toFixed(1)}" fill="#6A1B9A" rx="2"
-        data-month="${m.month}" data-run="${m.run_finops}" data-proj="${m.project_finops}" data-grand="${m.grand_total}" data-inv="${m.telstra_invoice||0}"/>`;
+        data-month="${m.month}" data-run="${m.run_finops}" data-proj="${m.project_finops}" data-grand="${m.grand_total||0}" data-inv="${m.telstra_invoice||0}"
+        data-fcrun="${m.forecast_run||''}" data-fcproj="${m.forecast_project||''}"/>`;
     if (runH > 1)
       bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${runY.toFixed(1)}" width="${barW}" height="${runH.toFixed(1)}" fill="#2B3752" rx="2"
-        data-month="${m.month}" data-run="${m.run_finops}" data-proj="${m.project_finops}" data-grand="${m.grand_total}" data-inv="${m.telstra_invoice||0}"/>`;
+        data-month="${m.month}" data-run="${m.run_finops}" data-proj="${m.project_finops}" data-grand="${m.grand_total||0}" data-inv="${m.telstra_invoice||0}"
+        data-fcrun="${m.forecast_run||''}" data-fcproj="${m.forecast_project||''}"/>`;
 
     const dt  = new Date(m.month);
     const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"}).replace(" ", "-");
     xLabels += `<text x="${xC.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="11" fill="#52514e">${lbl}</text>`;
   });
 
+  // Forecast lines helper — builds SVG path + dot elements
+  function forecastLine(key, color) {
+    let pathD = "";
+    let dots  = "";
+    let tipRects = "";
+    months.forEach((m, i) => {
+      const val = m[key];
+      if (val == null) return;
+      const xC = PL + slot * i + slot / 2;
+      const y  = PT + cH - (val / yMax) * cH;
+      pathD += pathD === "" ? `M${xC.toFixed(1)},${y.toFixed(1)}` : ` L${xC.toFixed(1)},${y.toFixed(1)}`;
+      dots  += `<circle cx="${xC.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${color}" stroke="#fff" stroke-width="1.5"/>`;
+      // Invisible hover rect per dot for tooltip
+      tipRects += `<rect x="${(xC-slot/2).toFixed(1)}" y="${PT}" width="${slot.toFixed(1)}" height="${cH}"
+        fill="transparent" class="chart-fc-tip"
+        data-month="${m.month}" data-run="${m.run_finops!=null?m.run_finops:''}" data-proj="${m.project_finops!=null?m.project_finops:''}"
+        data-grand="${m.grand_total!=null?m.grand_total:''}" data-inv="${m.telstra_invoice||0}"
+        data-fcrun="${m.forecast_run||''}" data-fcproj="${m.forecast_project||''}"/>`;
+    });
+    if (!pathD) return "";
+    return `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" opacity=".9"/>
+            ${dots}${tipRects}`;
+  }
+
+  const fcRunLine  = forecastLine("forecast_run",     "#C0392B");
+  const fcProjLine = forecastLine("forecast_project", "#eb6834");
+
   wrap.innerHTML = `
     <div class="sum-legend">
-      <span class="sum-legend-dot" style="background:#2B3752"></span>Run Cost (FinOps Total)
-      <span class="sum-legend-dot" style="background:#6A1B9A"></span>Project X-charge (FinOps Total)
+      <span class="sum-legend-dot" style="background:#2B3752"></span>Run Cost (Actual)
+      <span class="sum-legend-dot" style="background:#6A1B9A"></span>Project (Actual)
+      <span class="sum-legend-dot" style="background:#C0392B;border-radius:0;height:3px;width:18px;margin-top:4px"></span>Run Cost Forecast
+      <span class="sum-legend-dot" style="background:#eb6834;border-radius:0;height:3px;width:18px;margin-top:4px"></span>Project Forecast
     </div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block;overflow:visible"
          font-family="'Segoe UI',system-ui,sans-serif">
-      ${gridLines}${yLabels}${bars}${xLabels}
+      ${gridLines}${yLabels}${bars}${fcRunLine}${fcProjLine}${xLabels}
     </svg>`;
 
-  wrap.querySelectorAll(".chart-bar").forEach(bar => {
-    bar.addEventListener("mouseenter", e => showBarTip(e, bar));
-    bar.addEventListener("mousemove",  e => posBarTip(e));
-    bar.addEventListener("mouseleave", ()  => { document.getElementById("chart-tooltip").style.display = "none"; });
+  wrap.querySelectorAll(".chart-bar,.chart-fc-tip").forEach(el => {
+    el.addEventListener("mouseenter", e => showBarTip(e, el));
+    el.addEventListener("mousemove",  e => posBarTip(e));
+    el.addEventListener("mouseleave", ()  => { document.getElementById("chart-tooltip").style.display = "none"; });
   });
 }
 
@@ -981,12 +1019,22 @@ function showBarTip(e, bar) {
   const tip = document.getElementById("chart-tooltip");
   const dt  = new Date(bar.dataset.month);
   const lbl = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
-  const inv = +bar.dataset.inv;
-  tip.innerHTML = `<strong>${lbl}</strong><br/>
-    Run Cost: ${fmt(+bar.dataset.run)}<br/>
-    Project:  ${fmt(+bar.dataset.proj)}<br/>
-    Grand Total: ${fmt(+bar.dataset.grand)}` +
-    (inv ? `<br/>Telstra Invoice: ${fmt(inv)}` : "");
+  const inv   = +bar.dataset.inv || 0;
+  const run   = bar.dataset.run   !== "" ? +bar.dataset.run   : null;
+  const proj  = bar.dataset.proj  !== "" ? +bar.dataset.proj  : null;
+  const grand = bar.dataset.grand !== "" ? +bar.dataset.grand : null;
+  const fcRun = bar.dataset.fcrun  !== "" ? +bar.dataset.fcrun  : null;
+  const fcProj= bar.dataset.fcproj !== "" ? +bar.dataset.fcproj : null;
+
+  let html = `<strong>${lbl}</strong>`;
+  if (run != null)  html += `<br/><span style="color:#9ab0cc">■</span> Run Cost (actual): ${fmt(run)}`;
+  if (proj != null) html += `<br/><span style="color:#c8a0e0">■</span> Project (actual): ${fmt(proj)}`;
+  if (grand != null)html += `<br/>Grand Total: ${fmt(grand)}`;
+  if (inv)          html += `<br/>Telstra Invoice: ${fmt(inv)}`;
+  if (fcRun != null) html += `<br/><span style="color:#e87070">—</span> Run Forecast: ${fmt(fcRun)}`;
+  if (fcProj!= null) html += `<br/><span style="color:#f0a060">—</span> Proj Forecast: ${fmt(fcProj)}`;
+
+  tip.innerHTML = html;
   tip.style.display = "block";
   posBarTip(e);
 }
@@ -1001,14 +1049,16 @@ function posBarTip(e) {
 }
 
 function updateSummaryKPIs(months) {
-  const totalRun  = months.reduce((s, m) => s + (m.run_finops     || 0), 0);
-  const totalProj = months.reduce((s, m) => s + (m.project_finops || 0), 0);
-  const totalGrand= months.reduce((s, m) => s + (m.grand_total    || 0), 0);
-  const count     = months.length;
-  document.getElementById("sum-kpi-run").textContent    = fmt(totalRun);
-  document.getElementById("sum-kpi-proj").textContent   = fmt(totalProj);
-  document.getElementById("sum-kpi-grand").textContent  = fmt(totalGrand);
-  document.getElementById("sum-kpi-months").textContent = count;
+  // KPI tiles only count months with actual CUR data (not forecast-only)
+  const actual    = months.filter(m => m.run_finops != null);
+  const totalRun  = actual.reduce((s, m) => s + (m.run_finops     || 0), 0);
+  const totalProj = actual.reduce((s, m) => s + (m.project_finops || 0), 0);
+  const totalGrand= actual.reduce((s, m) => s + (m.grand_total    || 0), 0);
+  const count     = actual.length;
+  document.getElementById("sum-kpi-run").textContent    = count ? fmt(totalRun)  : "—";
+  document.getElementById("sum-kpi-proj").textContent   = count ? fmt(totalProj) : "—";
+  document.getElementById("sum-kpi-grand").textContent  = count ? fmt(totalGrand): "—";
+  document.getElementById("sum-kpi-months").textContent = count || months.length;
   document.getElementById("sum-kpi-avg").textContent    = count ? fmt(totalRun / count) : "—";
 }
 

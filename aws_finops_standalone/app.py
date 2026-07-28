@@ -630,20 +630,43 @@ def api_discover_workloads():
 @app.route("/AWSFinOps/api/summary", methods=["GET"])
 @login_required
 def api_summary():
-    months = get_available_months()
+    actual_months = set(get_available_months())
+
+    with get_conn() as conn:
+        fc_rows = conn.execute(
+            "SELECT month, forecast_run, forecast_project FROM monthly_inputs "
+            "WHERE forecast_run IS NOT NULL OR forecast_project IS NOT NULL ORDER BY month"
+        ).fetchall()
+    forecast_map = {r["month"]: dict(r) for r in fc_rows}
+
+    all_months = sorted(actual_months | set(forecast_map.keys()))
     result = []
-    for m in months:
-        try:
-            d = compute(m)
+    for m in all_months:
+        fc = forecast_map.get(m, {})
+        if m in actual_months:
+            try:
+                d = compute(m)
+                result.append({
+                    "month":           m,
+                    "run_finops":      d["total_consumption_finops"],
+                    "project_finops":  d["total_project_finops"],
+                    "grand_total":     d["grand_total"],
+                    "telstra_invoice": d["telstra_invoice"] or 0,
+                    "forecast_run":    fc.get("forecast_run"),
+                    "forecast_project":fc.get("forecast_project"),
+                })
+            except Exception as e:
+                log.warning(f"Summary compute error for {m}: {e}")
+        else:
             result.append({
                 "month":           m,
-                "run_finops":      d["total_consumption_finops"],
-                "project_finops":  d["total_project_finops"],
-                "grand_total":     d["grand_total"],
-                "telstra_invoice": d["telstra_invoice"] or 0,
+                "run_finops":      None,
+                "project_finops":  None,
+                "grand_total":     None,
+                "telstra_invoice": 0,
+                "forecast_run":    fc.get("forecast_run"),
+                "forecast_project":fc.get("forecast_project"),
             })
-        except Exception as e:
-            log.warning(f"Summary compute error for {m}: {e}")
     return jsonify({"months": result})
 
 
