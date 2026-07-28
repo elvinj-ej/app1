@@ -274,8 +274,8 @@ input[type=file]{display:none}
     <div class="kpi"><div class="kpi-label">Months (actual data)</div><div class="kpi-val" id="sum-kpi-months">—</div></div>
     <div class="kpi"><div class="kpi-label">Avg Monthly Run Cost</div><div class="kpi-val" id="sum-kpi-avg">—</div></div>
   </div>
-  <!-- Two charts -->
-  <div class="chart-grid">
+  <!-- Charts stacked vertically -->
+  <div style="display:flex;flex-direction:column;gap:16px">
     <div class="chart-card">
       <div class="chart-card-hdr">
         <div class="chart-card-title" style="color:#2B3752">Run Cost — Consumption</div>
@@ -291,9 +291,6 @@ input[type=file]{display:none}
       <div id="chart-proj"><div class="no-data" style="padding:32px">No data available.</div></div>
     </div>
   </div>
-  <!-- Summary detail tables -->
-  <div id="sum-tbl-run"  style="margin-top:16px"></div>
-  <div id="sum-tbl-proj" style="margin-top:16px"></div>
 </div>
 <!-- Shared tooltip — fixed positioned so it works for both charts -->
 <div id="chart-tooltip" style="display:none;position:fixed;background:rgba(27,35,51,.96);color:#fff;
@@ -883,7 +880,7 @@ document.getElementById("sum-mkt-toggle").addEventListener("click", function() {
   sumMktOnly = !sumMktOnly;
   this.textContent = sumMktOnly ? "Marketplace Only" : "All Costs";
   this.classList.toggle("active", sumMktOnly);
-  renderSummaryTables(getFilteredMonths());
+  renderChart();
 });
 
 function getFY(monthStr) {
@@ -904,11 +901,7 @@ async function loadSummary() {
     ["sum-kpi-run","sum-kpi-proj","sum-kpi-grand","sum-kpi-months","sum-kpi-avg"].forEach(id =>
       document.getElementById(id).textContent = "—");
   };
-  if (!summaryData.length) {
-    noData("No data available. Upload a CUR file first.");
-    ["sum-tbl-run","sum-tbl-proj"].forEach(id => document.getElementById(id).innerHTML = "");
-    return;
-  }
+  if (!summaryData.length) { noData("No data available. Upload a CUR file first."); return; }
   const fySet  = new Set(summaryData.map(m => getFY(m.month)));
   const fyList = [...fySet].sort();
   if (!fySet.has(sumSelFY)) { sumSelFY = fyList[fyList.length - 1]; sumSelMonths.clear(); }
@@ -964,14 +957,24 @@ function renderChart() {
   if (!months.length) {
     ["chart-run","chart-proj"].forEach(id =>
       document.getElementById(id).innerHTML = '<div class="no-data" style="padding:32px">No months match the selected filters.</div>');
-    ["sum-tbl-run","sum-tbl-proj"].forEach(id => document.getElementById(id).innerHTML = "");
     updateSummaryKPIs([]);
     return;
   }
-  updateSummaryKPIs(months);
-  renderSingleChart("chart-run",  "chart-status-run",  months, "run_finops",     "forecast_run",     "#2B3752", "#C0392B", "run_workloads");
-  renderSingleChart("chart-proj", "chart-status-proj", months, "project_finops", "forecast_project", "#6A1B9A", "#eb6834", "project_workloads");
-  renderSummaryTables(months);
+
+  // When Marketplace Only is active, replace actual values with sum of workload marketplace spend
+  const view = sumMktOnly
+    ? months.map(m => ({
+        ...m,
+        run_finops:      (m.run_workloads     || []).reduce((s, w) => s + (w.marketplace || 0), 0) || null,
+        project_finops:  (m.project_workloads || []).reduce((s, w) => s + (w.marketplace || 0), 0) || null,
+        forecast_run:    null,
+        forecast_project:null,
+      }))
+    : months;
+
+  updateSummaryKPIs(view);
+  renderSingleChart("chart-run",  "chart-status-run",  view, "run_finops",     "forecast_run",     "#2B3752", "#C0392B", "run_workloads");
+  renderSingleChart("chart-proj", "chart-status-proj", view, "project_finops", "forecast_project", "#6A1B9A", "#eb6834", "project_workloads");
 }
 
 function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, fcColor, worksKey) {
@@ -1155,73 +1158,6 @@ function posBarTip(e) {
   tip.style.top  = y + "px";
 }
 
-function renderSummaryTables(months) {
-  const actual = months.filter(m => m.run_finops != null);
-  renderSummaryTable("sum-tbl-run",  actual, "run_workloads",     "Run Cost — Consumption", "#2B3752");
-  renderSummaryTable("sum-tbl-proj", actual, "project_workloads", "Project X-charge",       "#6A1B9A");
-}
-
-function renderSummaryTable(elId, months, worksKey, title, accentColor) {
-  const el = document.getElementById(elId);
-  if (!months.length) { el.innerHTML = ""; return; }
-
-  // Aggregate: sum value per workload across selected months
-  const nameSet  = new Set();
-  const domainOf = {};
-  const totals   = {};
-
-  months.forEach(m => {
-    (m[worksKey] || []).forEach(w => {
-      nameSet.add(w.name);
-      if (!domainOf[w.name] && w.domain) domainOf[w.name] = w.domain;
-      const val = sumMktOnly ? (w.marketplace || 0) : (w.actual || 0);
-      totals[w.name] = (totals[w.name] || 0) + val;
-    });
-  });
-
-  if (!nameSet.size) { el.innerHTML = ""; return; }
-
-  const grandTotal = Object.values(totals).reduce((s, v) => s + v, 0);
-  const rows = [...nameSet]
-    .map(name => ({ name, total: totals[name] || 0 }))
-    .sort((a, b) => b.total - a.total);
-
-  const viewLabel = sumMktOnly ? " — Marketplace Only" : "";
-  const periodLabel = months.length === 1
-    ? new Date(months[0].month).toLocaleDateString("en-AU", {month:"long", year:"numeric"})
-    : `${months.length} months`;
-
-  let trs = rows.map(r => {
-    const pct = grandTotal > 0 ? (r.total / grandTotal * 100) : 0;
-    const bar = `<div style="height:5px;border-radius:3px;background:${accentColor};opacity:.7;width:${Math.min(100,pct).toFixed(1)}%;min-width:${r.total>0?2:0}px"></div>`;
-    return `<tr>
-      <td style="font-weight:500">${r.name}</td>
-      <td class="num">${fmt(r.total)}</td>
-      <td style="min-width:80px;padding-right:12px">${bar}<span style="font-size:.72rem;color:var(--muted)">${pct.toFixed(1)}%</span></td>
-    </tr>`;
-  }).join("");
-
-  el.innerHTML = `
-  <div class="chart-card">
-    <div class="chart-card-hdr" style="margin-bottom:12px">
-      <div>
-        <div class="chart-card-title" style="color:${accentColor}">${title}${viewLabel}</div>
-        <div style="font-size:.73rem;color:var(--muted);margin-top:2px">${periodLabel} · Total: <strong>${fmt(grandTotal)}</strong></div>
-      </div>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead class="hd-${worksKey==="run_workloads"?"run":"project"}">
-          <tr><th>Workload</th><th class="num">Total</th><th>Share</th></tr>
-        </thead>
-        <tbody>${trs}</tbody>
-        <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
-          <td>Total</td><td class="num">${fmt(grandTotal)}</td><td></td>
-        </tr></tfoot>
-      </table>
-    </div>
-  </div>`;
-}
 
 function updateSummaryKPIs(months) {
   const actual    = months.filter(m => m.run_finops != null);
