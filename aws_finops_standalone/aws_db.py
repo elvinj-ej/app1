@@ -40,11 +40,11 @@ _SEED_WORKLOADS = [
     ("Dexter",            "",                       "Other",             "",                         "",                                                              0),
     ("Disabled",          "",                       "Other",             "",                         "",                                                              0),
     ("DNR",               "",                       "Other",             "",                         "",                                                              0),
-    ("DPX MCP",           "Corporate Supply Chain", "Other",             "Cherry Zhang",             "Growth in some accounts - agentic workloads",                   0),
+    ("DPX MCP",           "Corporate Supply Chain", "Consumption",       "Cherry Zhang",             "Growth in some accounts - agentic workloads",                   6740.80),
     ("Identity",          "",                       "Other",             "",                         "",                                                              0),
     ("Magento",           "",                       "Other",             "",                         "",                                                              0),
     ("MRA",               "",                       "Other",             "",                         "",                                                              0),
-    ("Olingo Odata",      "Corporate Supply Chain", "Other",             "Cherry Zhang",             "",                                                              0),
+    ("Olingo Odata",      "Corporate Supply Chain", "Consumption",       "Cherry Zhang",             "",                                                              3797.20),
     ("Quick Suite",       "",                       "Other",             "",                         "",                                                              0),
     ("R_D",               "",                       "Other",             "",                         "",                                                              0),
     ("Rehosted Apps",     "",                       "Other",             "",                         "",                                                              0),
@@ -140,7 +140,7 @@ def init_db():
         _OTHER_WORKLOADS = (
             "Acoustics", "AWS Identity", "AWS Security", "BBTB", "Boomi-Data",
             "CCI", "CIAM", "CRIP", "CSP Sandbox", "Dexter", "Disabled", "DNR",
-            "DPX MCP", "Identity", "Magento", "MRA", "Olingo Odata", "Quick Suite",
+            "Identity", "Magento", "MRA", "Quick Suite",
             "R_D", "Rehosted Apps", "Rehosted DBs", "Sandbox", "SFHC Miterra",
             "Sharefile", "SimpleMDG", "SBOX", "Trackwise",
         )
@@ -153,6 +153,9 @@ def init_db():
 
         # Migrate Model Gateway to Project
         conn.execute("UPDATE workloads SET cost_category='Project' WHERE name='Model Gateway'")
+
+        # Ensure DPX MCP and Olingo Odata remain Consumption
+        conn.execute("UPDATE workloads SET cost_category='Consumption' WHERE name IN ('DPX MCP', 'Olingo Odata')")
 
         # Schema migrations for existing databases
         existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
