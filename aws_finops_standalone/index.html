@@ -746,8 +746,18 @@ async function loadRunCost(month) {
   </tr>`;
 
   // ── Run Cost table ────────────────────────────────────────────────────────
+  function otherBreakdown(r) {
+    if (r.workload !== "Other" || !r.unmatched_breakdown || !r.unmatched_breakdown.length) return "";
+    const items = r.unmatched_breakdown.map(x =>
+      `<span style="display:inline-block;background:#FFF3E0;border:1px solid #FFB74D;border-radius:4px;padding:1px 6px;margin:2px 2px 0 0;font-size:.68rem;color:#E65100">
+        ${x.tag || "(blank)"}: ${fmt(x.amount)}
+      </span>`
+    ).join("");
+    return `<div style="margin-top:4px">${items}</div>`;
+  }
+
   let rRows = d.consumption_rows.map(r => `<tr class="${r.workload==="Other"?"row-other":""}">
-    <td>${r.workload}${r.workload!=="Other" ? momIndicator(r.workload, r.actual) : ""}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td>${r.workload}${r.workload!=="Other" ? momIndicator(r.workload, r.actual) : ""}${otherBreakdown(r)}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>

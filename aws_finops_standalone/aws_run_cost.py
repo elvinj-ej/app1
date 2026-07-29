@@ -110,16 +110,21 @@ def compute(month: str) -> dict:
 
     workload_expense:     dict[str, float] = {}
     workload_marketplace: dict[str, float] = {}
+    unmatched_tags: dict[str, float] = {}   # tag → total unmatched spend
 
     for tag, amt in tag_expense.items():
         name = resolve(tag)
         if name:
             workload_expense[name] = workload_expense.get(name, 0.0) + amt
+        else:
+            unmatched_tags[tag] = unmatched_tags.get(tag, 0.0) + amt
 
     for tag, amt in tag_marketplace.items():
         name = resolve(tag)
         if name:
             workload_marketplace[name] = workload_marketplace.get(name, 0.0) + amt
+        else:
+            unmatched_tags[tag] = unmatched_tags.get(tag, 0.0) + amt
 
     def net_actual(name: str) -> float:
         adj, _ = adj_map.get(name, (0.0, ""))
@@ -230,6 +235,11 @@ def compute(month: str) -> dict:
 
     # Other row (unmatched CUR spend in Run Cost)
     other_shared, other_td = allocs(other_actual)
+    # Sort unmatched tags by spend descending for display
+    unmatched_breakdown = sorted(
+        [{"tag": t, "amount": a} for t, a in unmatched_tags.items()],
+        key=lambda x: x["amount"], reverse=True
+    )
     consumption_rows.append({
         "workload":               "Other",
         "domain":                 "ALL",
@@ -246,6 +256,7 @@ def compute(month: str) -> dict:
         "telstra_diff":           other_td,
         "total":                  other_actual + other_shared + other_td,
         "deviation":              None,
+        "unmatched_breakdown":    unmatched_breakdown,
     })
 
     # ── Totals ────────────────────────────────────────────────────────────────
