@@ -669,15 +669,18 @@ def api_summary():
             try:
                 d = compute(m)
                 result.append({
-                    "month":              m,
-                    "run_finops":         d["total_consumption_finops"],
-                    "project_finops":     d["total_project_finops"],
-                    "grand_total":        d["grand_total"],
-                    "telstra_invoice":    d["telstra_invoice"] or 0,
-                    "forecast_run":       fc.get("forecast_run"),
-                    "forecast_project":   fc.get("forecast_project"),
-                    "run_workloads":      [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["consumption_rows"] if r["workload"] != "Other"],
-                    "project_workloads":  [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["project_rows"]],
+                    "month":                   m,
+                    "run_finops":              d["total_consumption_finops"],
+                    "project_finops":          d["total_project_finops"],
+                    "run_actual":              d["total_consumption_actual"],
+                    "project_actual":          d["total_project_actual"],
+                    "marketplace_pos_adj":     d["total_marketplace_pos_adj"],
+                    "grand_total":             d["grand_total"],
+                    "telstra_invoice":         d["telstra_invoice"] or 0,
+                    "forecast_run":            fc.get("forecast_run"),
+                    "forecast_project":        fc.get("forecast_project"),
+                    "run_workloads":           [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["consumption_rows"] if r["workload"] != "Other"],
+                    "project_workloads":       [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["project_rows"]],
                 })
             except Exception as e:
                 log.warning(f"Summary compute error for {m}: {e}")

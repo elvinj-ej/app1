@@ -269,9 +269,11 @@ input[type=file]{display:none}
   <!-- KPI tiles -->
   <div class="kpi-row" style="margin-bottom:16px">
     <div class="kpi" style="border-top:3px solid #2B3752"><div class="kpi-label">Run Cost (Actual)</div><div class="kpi-val" id="sum-kpi-run">—</div></div>
-    <div class="kpi" style="border-top:3px solid #6A1B9A"><div class="kpi-label">Project (Actual)</div><div class="kpi-val" id="sum-kpi-proj">—</div></div>
-    <div class="kpi"><div class="kpi-label">Grand Total</div><div class="kpi-val" id="sum-kpi-grand">—</div></div>
-    <div class="kpi"><div class="kpi-label">Months (actual data)</div><div class="kpi-val" id="sum-kpi-months">—</div></div>
+    <div class="kpi" style="border-top:3px solid #6A1B9A"><div class="kpi-label">Project Cost (Actual)</div><div class="kpi-val" id="sum-kpi-proj">—</div></div>
+    <div class="kpi" style="border-top:3px solid #E65100"><div class="kpi-label">Marketplace (via PO)</div><div class="kpi-val" id="sum-kpi-mktadj">—</div></div>
+    <div class="kpi" style="border-top:3px solid #37474F"><div class="kpi-label">Grand Total (1+2+3)</div><div class="kpi-val" id="sum-kpi-grand">—</div></div>
+    <div class="kpi" style="border-top:3px solid #1565C0"><div class="kpi-label">Telstra Bill Total</div><div class="kpi-val" id="sum-kpi-telstra">—</div></div>
+    <div class="kpi"><div class="kpi-label">Months (selected)</div><div class="kpi-val" id="sum-kpi-months">—</div></div>
     <div class="kpi"><div class="kpi-label">Avg Monthly Run Cost</div><div class="kpi-val" id="sum-kpi-avg">—</div></div>
   </div>
   <!-- Charts stacked vertically -->
@@ -905,7 +907,7 @@ async function loadSummary() {
       document.getElementById(id).innerHTML = `<div class="no-data" style="padding:32px">${msg}</div>`);
     ["chart-status-run","chart-status-proj"].forEach(id =>
       document.getElementById(id).innerHTML = "");
-    ["sum-kpi-run","sum-kpi-proj","sum-kpi-grand","sum-kpi-months","sum-kpi-avg"].forEach(id =>
+    ["sum-kpi-run","sum-kpi-proj","sum-kpi-mktadj","sum-kpi-grand","sum-kpi-telstra","sum-kpi-months","sum-kpi-avg"].forEach(id =>
       document.getElementById(id).textContent = "—");
   };
   if (!summaryData.length) { noData("No data available. Upload a CUR file first."); return; }
@@ -1173,16 +1175,20 @@ function posBarTip(e) {
 
 
 function updateSummaryKPIs(months) {
-  const actual    = months.filter(m => m.run_finops != null);
-  const totalRun  = actual.reduce((s, m) => s + (m.run_finops     || 0), 0);
-  const totalProj = actual.reduce((s, m) => s + (m.project_finops || 0), 0);
-  const totalGrand= actual.reduce((s, m) => s + (m.grand_total    || 0), 0);
-  const count     = actual.length;
-  document.getElementById("sum-kpi-run").textContent    = count ? fmt(totalRun)  : "—";
-  document.getElementById("sum-kpi-proj").textContent   = count ? fmt(totalProj) : "—";
-  document.getElementById("sum-kpi-grand").textContent  = count ? fmt(totalGrand): "—";
-  document.getElementById("sum-kpi-months").textContent = count || months.length;
-  document.getElementById("sum-kpi-avg").textContent    = count ? fmt(totalRun / count) : "—";
+  const actual      = months.filter(m => m.run_actual != null || m.run_finops != null);
+  const totalRun    = actual.reduce((s, m) => s + (m.run_actual          || 0), 0);
+  const totalProj   = actual.reduce((s, m) => s + (m.project_actual      || 0), 0);
+  const totalMkt    = actual.reduce((s, m) => s + (m.marketplace_pos_adj || 0), 0);
+  const totalTelstra= actual.reduce((s, m) => s + (m.telstra_invoice     || 0), 0);
+  const count       = actual.length;
+  const grand       = totalRun + totalProj + totalMkt;
+  document.getElementById("sum-kpi-run").textContent     = count ? fmt(totalRun)     : "—";
+  document.getElementById("sum-kpi-proj").textContent    = count ? fmt(totalProj)    : "—";
+  document.getElementById("sum-kpi-mktadj").textContent  = count ? fmt(totalMkt)     : "—";
+  document.getElementById("sum-kpi-grand").textContent   = count ? fmt(grand)        : "—";
+  document.getElementById("sum-kpi-telstra").textContent = count ? fmt(totalTelstra) : "—";
+  document.getElementById("sum-kpi-months").textContent  = count || months.length;
+  document.getElementById("sum-kpi-avg").textContent     = count ? fmt(totalRun / count) : "—";
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

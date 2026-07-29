@@ -140,6 +140,8 @@ def compute(month: str) -> dict:
     total_expense_cur     = sum(tag_expense.values())
     total_marketplace_cur = sum(tag_marketplace.values())
     total_adj             = sum(a for a, _ in adj_map.values())
+    # Marketplace purchases paid via separate PO (negative adjustments = removed from Telstra scope)
+    total_marketplace_pos_adj = abs(sum(min(0.0, a) for a, _ in adj_map.values()))
     named_all = sum(net_actual(w["name"]) for w in workloads)
     other_actual = max(0.0, total_expense_cur + total_marketplace_cur + total_adj - named_all)
 
@@ -260,6 +262,7 @@ def compute(month: str) -> dict:
         "month":                    month,
         "telstra_invoice":          telstra_invoice,
         "total_adj":                total_adj,
+        "total_marketplace_pos_adj": total_marketplace_pos_adj,
         "effective_invoice":        effective_invoice,
         "telstra_diff_total":       telstra_diff_total,
         "forecast_run":             forecast_run,
