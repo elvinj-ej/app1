@@ -155,7 +155,16 @@ def compute(month: str) -> dict:
     forecast_run     = (mi["forecast_run"]     if mi else None)
     forecast_project = (mi["forecast_project"] if mi else None)
 
-    telstra_diff_total = telstra_invoice - total_cur if telstra_invoice else 0.0
+    # Marketplace adjustments (negative = paid via separate PO, not through Telstra)
+    # must reduce the effective invoice by the same amount they reduce total_cur,
+    # otherwise telstra_diff is inflated by the full adjustment and spreads that
+    # phantom cost across every workload.
+    # effective_invoice = invoice + total_adj  (negative adj → reduces invoice)
+    # telstra_diff = effective_invoice - total_cur
+    #              = (invoice + total_adj) - (original_cur + total_adj)
+    #              = invoice - original_cur   ← clean, adjustment-neutral
+    effective_invoice  = (telstra_invoice + total_adj) if telstra_invoice else 0.0
+    telstra_diff_total = (effective_invoice - total_cur) if telstra_invoice else 0.0
 
     def allocs(actual: float):
         """(shared_alloc, telstra_diff) proportional to run_proj_total."""
@@ -250,6 +259,8 @@ def compute(month: str) -> dict:
     return {
         "month":                    month,
         "telstra_invoice":          telstra_invoice,
+        "total_adj":                total_adj,
+        "effective_invoice":        effective_invoice,
         "telstra_diff_total":       telstra_diff_total,
         "forecast_run":             forecast_run,
         "forecast_project":         forecast_project,
