@@ -210,6 +210,11 @@ input[type=file]{display:none}
     No CUR data yet. Go to <strong>Upload CUR</strong> to get started.
   </div>
 
+  <!-- Last CUR update -->
+  <div id="last-upload-bar" style="display:none;font-size:.75rem;color:var(--muted);margin-bottom:6px">
+    Based on the last CUR update: <strong id="last-upload-ts">—</strong>
+  </div>
+
   <!-- Month selector -->
   <div class="controls" id="month-controls" style="display:none">
     <span style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase">Month:</span>
@@ -236,13 +241,41 @@ input[type=file]{display:none}
 
   <!-- KPI cards -->
   <div class="kpi-row" id="kpi-row" style="display:none">
-    <div class="kpi"><div class="kpi-label">Total CUR (Actual)</div><div class="kpi-val" id="kpi-cur">—</div></div>
-    <div class="kpi"><div class="kpi-label">Telstra Invoice</div><div class="kpi-val" id="kpi-telstra">—</div></div>
-    <div class="kpi" style="border-top:3px solid #1565C0"><div class="kpi-label">Shared Cost Pool</div><div class="kpi-val" id="kpi-shared">—</div></div>
-    <div class="kpi" style="border-top:3px solid #2B3752"><div class="kpi-label">Run Cost (FinOps)</div><div class="kpi-val" id="kpi-run">—</div></div>
-    <div class="kpi" style="border-top:3px solid #6A1B9A"><div class="kpi-label">Project (FinOps)</div><div class="kpi-val" id="kpi-proj">—</div></div>
-    <div class="kpi"><div class="kpi-label">Grand Total</div><div class="kpi-val" id="kpi-grand">—</div></div>
-    <div class="kpi"><div class="kpi-label">Dev vs Run Forecast</div><div class="kpi-val" id="kpi-dev">—</div></div>
+    <div class="kpi" style="border-top:3px solid #1565C0">
+      <div class="kpi-label">Shared Cost Pool</div>
+      <div class="kpi-val" id="kpi-shared">—</div>
+      <div class="kpi-sub">AWS Networks, Billing, Network F5 &amp; Firewall — distributed proportionally to all workloads</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #2B3752">
+      <div class="kpi-label">Run Cost</div>
+      <div class="kpi-val" id="kpi-run">—</div>
+      <div class="kpi-sub">Consumption workloads incl. shared cost allocation &amp; Telstra diff</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #6A1B9A">
+      <div class="kpi-label">Project Cost</div>
+      <div class="kpi-val" id="kpi-proj">—</div>
+      <div class="kpi-sub">Project X-charge workloads incl. shared cost allocation &amp; Telstra diff</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #E65100">
+      <div class="kpi-label">Marketplace (via PO)</div>
+      <div class="kpi-val" id="kpi-mktadj">—</div>
+      <div class="kpi-sub">Marketplace purchases paid via separate PO</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Grand Total</div>
+      <div class="kpi-val" id="kpi-grand">—</div>
+      <div class="kpi-sub">Run Cost + Project Cost + Marketplace via PO</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Dev vs Run Forecast</div>
+      <div class="kpi-val" id="kpi-dev">—</div>
+      <div class="kpi-sub">Run Cost vs monthly forecast</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #455A64">
+      <div class="kpi-label">Telstra Invoice</div>
+      <div class="kpi-val" id="kpi-telstra">—</div>
+      <div class="kpi-sub">Telstra invoice as entered</div>
+    </div>
   </div>
 
   <!-- Main table -->
@@ -470,7 +503,7 @@ async function loadMonths() {
 
   if (!months.length) {
     document.getElementById("no-data-msg").style.display = "block";
-    ["month-controls","inputs-bar","kpi-row"].forEach(id =>
+    ["last-upload-bar","month-controls","inputs-bar","kpi-row"].forEach(id =>
       document.getElementById(id).style.display = "none");
     document.getElementById("runcost-wrap").innerHTML = "";
     return;
@@ -479,6 +512,11 @@ async function loadMonths() {
   document.getElementById("no-data-msg").style.display = "none";
   ["month-controls","inputs-bar","kpi-row"].forEach(id =>
     document.getElementById(id).style.display = "");
+
+  if (d.last_upload) {
+    document.getElementById("last-upload-ts").textContent = d.last_upload;
+    document.getElementById("last-upload-bar").style.display = "block";
+  }
 
   months.forEach(m => {
     const btn = document.createElement("button");
@@ -540,12 +578,12 @@ async function loadRunCost(month) {
   const mLabel = dt.toLocaleDateString("en-AU", {month:"short", year:"numeric"});
 
   // KPI cards
-  document.getElementById("kpi-cur").textContent    = fmt(d.total_cur);
-  document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
   document.getElementById("kpi-shared").textContent  = fmt(d.shared_pool);
   document.getElementById("kpi-run").textContent     = fmt(d.total_consumption_finops);
   document.getElementById("kpi-proj").textContent    = fmt(d.total_project_finops);
+  document.getElementById("kpi-mktadj").textContent  = fmt(d.total_marketplace_pos_adj || 0);
   document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
+  document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
 
   const devEl = document.getElementById("kpi-dev");
   if (d.deviation_run != null) {

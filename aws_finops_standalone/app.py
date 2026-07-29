@@ -387,7 +387,21 @@ def index():
 @app.route("/AWSFinOps/api/months", methods=["GET"])
 @login_required
 def api_months():
-    return jsonify({"months": get_available_months()})
+    from datetime import timezone, timedelta
+    months = get_available_months()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT uploaded_at FROM upload_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    last_upload = None
+    if row and row["uploaded_at"]:
+        try:
+            dt_utc = datetime.strptime(str(row["uploaded_at"]), "%Y-%m-%d %H:%M:%S")
+            aest = dt_utc + timedelta(hours=10)
+            last_upload = aest.strftime("%-d %b %Y %-I:%M %p AEST")
+        except Exception:
+            last_upload = str(row["uploaded_at"])
+    return jsonify({"months": months, "last_upload": last_upload})
 
 
 # ── API: run cost ─────────────────────────────────────────────────────────────
