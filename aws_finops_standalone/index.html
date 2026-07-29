@@ -645,7 +645,8 @@ async function loadRunCost(month) {
     const diff = d.telstra_invoice - actualsTotal;
     const pct  = (diff / actualsTotal * 100).toFixed(1);
     const sign = diff >= 0 ? "+" : "";
-    telstraSub.innerHTML = `Telstra diff: invoice − actuals (Run+Proj+Shared) = <strong style="color:${diff>=0?'var(--red)':'var(--green)'}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
+    const diffColor = Math.abs(parseFloat(pct)) > 3 ? 'var(--red)' : 'var(--green)';
+    telstraSub.innerHTML = `Telstra diff: invoice − actuals (Run+Proj+Shared) = <strong style="color:${diffColor}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
   } else {
     telstraSub.textContent = "Telstra invoice as entered";
   }
