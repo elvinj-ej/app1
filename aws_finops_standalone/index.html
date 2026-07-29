@@ -211,8 +211,8 @@ input[type=file]{display:none}
   </div>
 
   <!-- Last CUR update -->
-  <div id="last-upload-bar" style="display:none;font-size:.75rem;color:var(--muted);margin-bottom:6px">
-    Based on the last CUR update: <strong id="last-upload-ts">—</strong>
+  <div id="last-upload-bar" style="display:none;font-size:.82rem;color:var(--navy);margin-bottom:10px;font-weight:500">
+    Based on the last CUR update: <strong id="last-upload-ts" style="color:var(--navy)">—</strong>
   </div>
 
   <!-- Month selector: FY dropdown + month pills -->
@@ -287,6 +287,10 @@ input[type=file]{display:none}
 
 <!-- ═══ SUMMARY TAB ══════════════════════════════════════════════════════════ -->
 <div class="tab-panel active" id="tab-summary">
+  <!-- Last CUR update -->
+  <div id="sum-last-upload-bar" style="display:none;font-size:.82rem;color:var(--navy);margin-bottom:10px;font-weight:500">
+    Based on the last CUR update: <strong id="sum-last-upload-ts" style="color:var(--navy)">—</strong>
+  </div>
   <!-- Filter bar -->
   <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 16px;
               display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px">
@@ -1039,8 +1043,15 @@ function getFY(monthStr) {
 const fyLabel = fy => `FY${String(fy).slice(-2)}`;
 
 async function loadSummary() {
-  const d = await fetch(API + "/summary").then(r => r.json()).catch(() => ({months:[]}));
+  const [d, mD] = await Promise.all([
+    fetch(API + "/summary").then(r => r.json()).catch(() => ({months:[]})),
+    fetch(API + "/months").then(r => r.json()).catch(() => ({})),
+  ]);
   summaryData = d.months || [];
+  if (mD.last_upload) {
+    document.getElementById("sum-last-upload-ts").textContent = mD.last_upload;
+    document.getElementById("sum-last-upload-bar").style.display = "block";
+  }
   const noData = msg => {
     ["chart-run","chart-proj"].forEach(id =>
       document.getElementById(id).innerHTML = `<div class="no-data" style="padding:32px">${msg}</div>`);

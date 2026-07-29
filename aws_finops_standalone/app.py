@@ -396,9 +396,10 @@ def api_months():
     last_upload = None
     if row and row["uploaded_at"]:
         try:
-            dt_utc = datetime.strptime(str(row["uploaded_at"]), "%Y-%m-%d %H:%M:%S")
+            raw = str(row["uploaded_at"]).split(".")[0]  # strip fractional seconds
+            dt_utc = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
             aest = dt_utc + timedelta(hours=10)
-            last_upload = aest.strftime("%-d %b %Y %-I:%M %p AEST")
+            last_upload = aest.strftime("%-d %b %Y, %-I:%M %p AEST")
         except Exception:
             last_upload = str(row["uploaded_at"])
     return jsonify({"months": months, "last_upload": last_upload})
