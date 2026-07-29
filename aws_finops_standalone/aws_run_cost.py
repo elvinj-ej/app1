@@ -31,7 +31,7 @@ def get_available_months():
 def get_workloads():
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT name, domain, cost_category, budget_manager, description, budget_monthly, sort_order "
+            "SELECT name, domain, cost_category, budget_manager, description, budget_monthly, sort_order, cur_tag "
             "FROM workloads ORDER BY sort_order, name"
         ).fetchall()
     return [dict(r) for r in rows]
@@ -71,7 +71,7 @@ def compute(month: str) -> dict:
         ).fetchall()
 
         workloads = conn.execute(
-            "SELECT name, domain, cost_category, budget_manager, description, budget_monthly "
+            "SELECT name, domain, cost_category, budget_manager, description, budget_monthly, cur_tag "
             "FROM workloads ORDER BY sort_order, name"
         ).fetchall()
 
@@ -90,11 +90,23 @@ def compute(month: str) -> dict:
     adj_map = {r["workload"]: (float(r["adjustment"] or 0), r["note"] or "") for r in adj_rows}
 
     workload_names = {w["name"] for w in workloads}
+    # cur_tag overrides: maps CUR workloads_tag → workload name
+    cur_tag_map: dict[str, str] = {}
+    for w in workloads:
+        ct = (w["cur_tag"] or "").strip()
+        if ct:
+            cur_tag_map[ct.lower()] = w["name"]
 
     def resolve(tag: str) -> str | None:
+        tl = tag.lower()
+        # 1. Exact cur_tag override match
+        if tl in cur_tag_map:
+            return cur_tag_map[tl]
+        # 2. Exact workload name match
         if tag in workload_names:
             return tag
-        return next((n for n in workload_names if n.lower() == tag.lower()), None)
+        # 3. Case-insensitive workload name match
+        return next((n for n in workload_names if n.lower() == tl), None)
 
     workload_expense:     dict[str, float] = {}
     workload_marketplace: dict[str, float] = {}
@@ -131,14 +143,13 @@ def compute(month: str) -> dict:
     named_all = sum(net_actual(w["name"]) for w in workloads)
     other_actual = max(0.0, total_expense_cur + total_marketplace_cur + total_adj - named_all)
 
-    # Denominator for ratio = named run+project workloads only (matches Excel SUM range).
+    # Denominator includes all run+project spend (named workloads + Other).
     # Marketplace adjustments already reduce each workload's net_actual so adjusted
     # marketplace is naturally excluded; unadjusted marketplace is naturally included.
-    # "Other" is excluded from the ratio so untagged spend doesn't dilute allocations.
-    run_proj_total = named_run_proj
+    run_proj_total = named_run_proj + other_actual
 
-    # total_cur includes Other so telstra_diff is still computed against the full bill
-    total_cur = shared_pool + named_run_proj + other_actual
+    # total_cur = shared + run + project + other
+    total_cur = shared_pool + run_proj_total
 
     telstra_invoice  = float((mi["telstra_invoice"]  if mi else None) or 0)
     forecast_run     = (mi["forecast_run"]     if mi else None)
@@ -206,8 +217,8 @@ def compute(month: str) -> dict:
             "deviation":              (total - budget) if budget else None,
         })
 
-    # Other row (unmatched CUR spend) — excluded from ratio denominator so it receives
-    # no shared allocation or telstra diff; its actual passes through as-is.
+    # Other row (unmatched CUR spend in Run Cost)
+    other_shared, other_td = allocs(other_actual)
     consumption_rows.append({
         "workload":               "Other",
         "domain":                 "ALL",
@@ -220,9 +231,9 @@ def compute(month: str) -> dict:
         "marketplace_adjustment": 0.0,
         "marketplace_adj_note":   "",
         "actual":                 other_actual,
-        "shared_alloc":           0.0,
-        "telstra_diff":           0.0,
-        "total":                  other_actual,
+        "shared_alloc":           other_shared,
+        "telstra_diff":           other_td,
+        "total":                  other_actual + other_shared + other_td,
         "deviation":              None,
     })
 

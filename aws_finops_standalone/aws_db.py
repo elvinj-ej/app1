@@ -54,7 +54,8 @@ def init_db():
             "budget_manager TEXT,"
             "description    TEXT,"
             "budget_monthly REAL DEFAULT 0,"
-            "sort_order     INTEGER DEFAULT 99)"
+            "sort_order     INTEGER DEFAULT 99,"
+            "cur_tag        TEXT)"
         )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS cur_data ("
@@ -117,6 +118,8 @@ def init_db():
             conn.execute("ALTER TABLE workloads ADD COLUMN cost_category TEXT NOT NULL DEFAULT 'Consumption'")
         if "sort_order" not in existing_cols:
             conn.execute("ALTER TABLE workloads ADD COLUMN sort_order INTEGER DEFAULT 99")
+        if "cur_tag" not in existing_cols:
+            conn.execute("ALTER TABLE workloads ADD COLUMN cur_tag TEXT")
 
         # monthly_inputs migration: add forecast_run / forecast_project if missing
         mi_cols = {r[1] for r in conn.execute("PRAGMA table_info(monthly_inputs)").fetchall()}

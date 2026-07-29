@@ -520,8 +520,8 @@ def api_create_workload():
     try:
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO workloads (name,domain,cost_category,budget_manager,description,budget_monthly) "
-                "VALUES (?,?,?,?,?,?)",
+                "INSERT INTO workloads (name,domain,cost_category,budget_manager,description,budget_monthly,cur_tag) "
+                "VALUES (?,?,?,?,?,?,?)",
                 (
                     name,
                     (data.get("domain") or "").strip() or None,
@@ -529,6 +529,7 @@ def api_create_workload():
                     (data.get("budget_manager") or "").strip() or None,
                     (data.get("description") or "").strip() or None,
                     float(data.get("budget_monthly") or 0) or None,
+                    (data.get("cur_tag") or "").strip() or None,
                 ),
             )
         log.info(f"Workload created: {name} by {session.get('username','')}")
@@ -545,7 +546,7 @@ def api_update_workload(name):
     data = request.get_json(force=True)
     with get_conn() as conn:
         conn.execute(
-            "UPDATE workloads SET domain=?,cost_category=?,budget_manager=?,description=?,budget_monthly=? "
+            "UPDATE workloads SET domain=?,cost_category=?,budget_manager=?,description=?,budget_monthly=?,cur_tag=? "
             "WHERE name=?",
             (
                 (data.get("domain") or "").strip() or None,
@@ -553,6 +554,7 @@ def api_update_workload(name):
                 (data.get("budget_manager") or "").strip() or None,
                 (data.get("description") or "").strip() or None,
                 float(data.get("budget_monthly") or 0) or None,
+                (data.get("cur_tag") or "").strip() or None,
                 name,
             ),
         )

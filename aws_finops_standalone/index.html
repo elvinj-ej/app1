@@ -362,6 +362,10 @@ input[type=file]{display:none}
       <label>Description</label>
       <input type="text" id="wl-desc" placeholder="Optional notes"/>
     </div>
+    <div class="mb14 fld">
+      <label>CUR Tag Override <span style="font-weight:400;color:var(--muted)">(if the workloads_tag in your CUR file differs from the workload name)</span></label>
+      <input type="text" id="wl-cur-tag" placeholder="e.g. DataInsights_ADA — leave blank if tag matches workload name"/>
+    </div>
     <div class="alert alert-err" id="modal-err" style="display:none"></div>
     <div class="modal-footer">
       <button class="btn btn-outline" id="modal-cancel">Cancel</button>
@@ -720,6 +724,7 @@ async function loadWorkloads() {
     <td>${w.budget_manager||"—"}</td>
     <td class="num">${w.budget_monthly ? fmt(w.budget_monthly) : "—"}</td>
     <td style="font-size:.78rem;color:var(--muted)">${w.description||""}</td>
+    <td style="font-size:.75rem;color:var(--muted);font-family:monospace">${w.cur_tag ? `<span title="CUR tag override" style="background:#FFF8E1;color:#7B4F00;padding:1px 5px;border-radius:3px">${w.cur_tag}</span>` : ""}</td>
     <td style="white-space:nowrap">
       <button class="btn btn-outline btn-sm" onclick='openEdit(${JSON.stringify(w)})'>Edit</button>
       <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick='delWL(${JSON.stringify(w.name)})'>Del</button>
@@ -729,14 +734,14 @@ async function loadWorkloads() {
     <div class="tbl-wrap"><table>
       <thead><tr style="background:var(--col-shared);color:#fff">
         <th>Workload</th><th>Domain</th><th>Category</th><th>Budget Manager</th>
-        <th class="num">Budget/mo</th><th>Description</th><th></th>
+        <th class="num">Budget/mo</th><th>Description</th><th>CUR Tag</th><th></th>
       </tr></thead>
       <tbody>
-        <tr class="section-hdr" style="color:var(--col-shared)"><td colspan="7">Shared Cost Accounts</td></tr>
+        <tr class="section-hdr" style="color:var(--col-shared)"><td colspan="8">Shared Cost Accounts</td></tr>
         ${makeRows(shared)}
-        <tr class="section-hdr" style="color:var(--col-run)"><td colspan="7">Run Cost — Consumption</td></tr>
+        <tr class="section-hdr" style="color:var(--col-run)"><td colspan="8">Run Cost — Consumption</td></tr>
         ${makeRows(consumption)}
-        <tr class="section-hdr" style="color:var(--col-project)"><td colspan="7">Project X-charge</td></tr>
+        <tr class="section-hdr" style="color:var(--col-project)"><td colspan="8">Project X-charge</td></tr>
         ${makeRows(project)}
       </tbody>
     </table></div>`;
@@ -753,7 +758,7 @@ async function delWL(name) {
 let editName = null;
 
 function clearModal() {
-  ["wl-name","wl-domain","wl-mgr","wl-budget","wl-desc"].forEach(id => {
+  ["wl-name","wl-domain","wl-mgr","wl-budget","wl-desc","wl-cur-tag"].forEach(id => {
     document.getElementById(id).value = "";
   });
   document.getElementById("wl-category").value = "Consumption";
@@ -779,6 +784,7 @@ function openEdit(w) {
   document.getElementById("wl-mgr").value      = w.budget_manager || "";
   document.getElementById("wl-budget").value   = w.budget_monthly || "";
   document.getElementById("wl-desc").value     = w.description || "";
+  document.getElementById("wl-cur-tag").value  = w.cur_tag || "";
   document.getElementById("wl-modal").classList.add("open");
 }
 
@@ -800,6 +806,7 @@ document.getElementById("modal-save").addEventListener("click", async () => {
     budget_manager: document.getElementById("wl-mgr").value.trim(),
     description:    document.getElementById("wl-desc").value.trim(),
     budget_monthly: document.getElementById("wl-budget").value || null,
+    cur_tag:        document.getElementById("wl-cur-tag").value.trim() || null,
   };
 
   const url    = editName ? `${API}/workloads/${encodeURIComponent(editName)}` : `${API}/workloads`;
