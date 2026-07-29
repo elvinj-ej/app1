@@ -1176,8 +1176,8 @@ function posBarTip(e) {
 
 function updateSummaryKPIs(months) {
   const actual      = months.filter(m => m.run_actual != null || m.run_finops != null);
-  const totalRun    = actual.reduce((s, m) => s + (m.run_actual          || 0), 0);
-  const totalProj   = actual.reduce((s, m) => s + (m.project_actual      || 0), 0);
+  const totalRun    = actual.reduce((s, m) => s + (m.run_finops           || 0), 0);
+  const totalProj   = actual.reduce((s, m) => s + (m.project_finops      || 0), 0);
   const totalMkt    = actual.reduce((s, m) => s + (m.marketplace_pos_adj || 0), 0);
   const totalTelstra= actual.reduce((s, m) => s + (m.telstra_invoice     || 0), 0);
   const count       = actual.length;
