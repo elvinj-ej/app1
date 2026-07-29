@@ -266,7 +266,7 @@ input[type=file]{display:none}
     <div class="kpi" style="min-width:0;flex:1">
       <div class="kpi-label">Grand Total</div>
       <div class="kpi-val" id="kpi-grand">—</div>
-      <div class="kpi-sub">Run Cost + Project Cost + Marketplace via PO</div>
+      <div class="kpi-sub">Run Cost + Project Cost + Marketplace (not via PO)</div>
     </div>
     <div class="kpi" style="border-top:3px solid #455A64;min-width:0;flex:1">
       <div class="kpi-label">Telstra Invoice</div>
@@ -638,14 +638,14 @@ async function loadRunCost(month) {
   document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
   document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
 
-  // Telstra invoice detail: vs total cost (run + project + shared pool)
-  const totalCostBreakdown = d.total_consumption_finops + d.total_project_finops + d.total_marketplace_pos_adj;
+  // Telstra invoice detail: diff vs sum of actuals (run + project + shared)
   const telstraSub = document.getElementById("kpi-telstra-sub");
-  if (hasTelstra && totalCostBreakdown) {
-    const diff = d.telstra_invoice - totalCostBreakdown;
-    const pct  = (diff / totalCostBreakdown * 100).toFixed(1);
+  const actualsTotal = (d.total_consumption_actual || 0) + (d.total_project_actual || 0) + (d.total_shared_actual || 0);
+  if (hasTelstra && actualsTotal) {
+    const diff = d.telstra_invoice - actualsTotal;
+    const pct  = (diff / actualsTotal * 100).toFixed(1);
     const sign = diff >= 0 ? "+" : "";
-    telstraSub.innerHTML = `vs total cost (Run+Proj+MKT): <strong style="color:${diff>=0?'var(--red)':'var(--green)'}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
+    telstraSub.innerHTML = `Telstra diff: invoice − actuals (Run+Proj+Shared) = <strong style="color:${diff>=0?'var(--red)':'var(--green)'}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
   } else {
     telstraSub.textContent = "Telstra invoice as entered";
   }
