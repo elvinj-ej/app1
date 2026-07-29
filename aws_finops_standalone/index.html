@@ -266,7 +266,7 @@ input[type=file]{display:none}
     <div class="kpi" style="min-width:0;flex:1">
       <div class="kpi-label">Grand Total</div>
       <div class="kpi-val" id="kpi-grand">—</div>
-      <div class="kpi-sub">Run Cost FinOps + Project X-charge FinOps</div>
+      <div class="kpi-sub">Run Cost + Project Cost + Marketplace (not via PO)</div>
     </div>
     <div class="kpi" style="border-top:3px solid #455A64;min-width:0;flex:1">
       <div class="kpi-label">Telstra Invoice</div>
@@ -1150,81 +1150,200 @@ function renderChart() {
 
 function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, fcColor, worksKey) {
   const el = document.getElementById(elId);
-  const W = 900, H = 300, PL = 70, PR = 20, PT = 28, PB = 56;
+  const W = 900, H = 320, PL = 72, PR = 24, PT = 32, PB = 60;
   const cW = W - PL - PR, cH = H - PT - PB;
+
+  // Derive the "overhead" key (shared alloc + telstra diff = finops - actual)
+  const overheadKey = actualKey === "run_finops" ? "run_actual" : "project_actual";
 
   const allVals = months.flatMap(m => [m[actualKey] || 0, m[fcKey] || 0]);
   const maxVal  = Math.max(...allVals);
   const yMax    = Math.ceil((maxVal * 1.15) / 50000) * 50000 || 100000;
   const slot    = cW / months.length;
-  const barW    = Math.min(48, Math.max(8, slot * 0.55));
+  const barW    = Math.min(44, Math.max(8, slot * 0.55));
 
-  // Grid + Y labels (5 gridlines)
+  // ── FY boundary detection ──────────────────────────────────────────────────
+  // Cochlear FY = Jul–Jun. Annotate each FY with its total.
+  const fyTotals = {};
+  months.forEach(m => {
+    if (m[actualKey] == null) return;
+    const dt = new Date(m.month);
+    const fy = dt.getMonth() >= 6 ? dt.getFullYear() + 1 : dt.getFullYear();
+    fyTotals[fy] = (fyTotals[fy] || 0) + m[actualKey];
+  });
+
+  // ── Grid + Y labels (5 gridlines) ─────────────────────────────────────────
   let grid = "", yLbls = "";
   for (let i = 0; i <= 5; i++) {
     const val = (yMax / 5) * i;
     const y   = PT + cH - (val / yMax) * cH;
-    grid  += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="${i===0?"#c8c6be":"#e8e6de"}" stroke-width="${i===0?1.5:1}"/>`;
+    grid  += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"
+      stroke="${i===0?"#c8c6be":"#e8e6de"}" stroke-width="${i===0?1.5:1}"/>`;
     yLbls += `<text x="${PL-8}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#6b6960">$${(val/1000).toFixed(0)}k</text>`;
   }
 
-  // Bars + rotated X labels
-  let bars = "", xLbls = "";
+  // ── Forecast band (±5% shaded area) ───────────────────────────────────────
+  let bandPath = "";
+  const fcBandPts = months.map((m, i) => {
+    if (m[fcKey] == null) return null;
+    return { x: PL + slot * i + slot / 2, fc: m[fcKey] };
+  }).filter(Boolean);
+
+  if (fcBandPts.length >= 2) {
+    const topPts    = fcBandPts.map(p => `${p.x.toFixed(1)},${(PT + cH - ((p.fc * 1.05) / yMax) * cH).toFixed(1)}`);
+    const bottomPts = [...fcBandPts].reverse().map(p => `${p.x.toFixed(1)},${(PT + cH - ((p.fc * 0.95) / yMax) * cH).toFixed(1)}`);
+    bandPath = `<path d="M${topPts.join(" L")} L${bottomPts.join(" L")} Z"
+      fill="${fcColor}" opacity="0.10" style="pointer-events:none"/>`;
+  }
+
+  // ── Stacked bars + X labels ───────────────────────────────────────────────
+  let bars = "", xLbls = "", fyDividers = "", fyLabels = "";
+  const barColorLight = barColor + "66"; // 40% opacity tint for overhead segment
+
+  let prevFY = null;
+  const fyXranges = {}; // fy → {x1, x2} for annotation positioning
+
   months.forEach((m, i) => {
     const xC  = PL + slot * i + slot / 2;
     const x   = xC - barW / 2;
-    const val = m[actualKey];
-    if (val != null && val > 0) {
-      const h  = (val / yMax) * cH;
-      const y  = PT + cH - h;
-      const fc = m[fcKey];
-      const overH = (fc != null && val > fc) ? ((val - fc) / yMax * cH) : 0;
-      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
-        fill="${barColor}" rx="3" data-month="${m.month}" data-actual-key="${actualKey}" data-fc-key="${fcKey}" data-works-key="${worksKey}"/>`;
-      if (overH > 0)
-        bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${overH.toFixed(1)}"
-          fill="#C0392B" rx="3" opacity="0.25" style="pointer-events:none"/>`;
-      // Value label on bar if tall enough
-      if (h > 22)
-        bars += `<text x="${xC.toFixed(1)}" y="${(y+13).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600"
-          fill="rgba(255,255,255,0.9)" style="pointer-events:none">$${(val/1000).toFixed(0)}k</text>`;
+
+    // FY boundary divider + annotation
+    const dt = new Date(m.month);
+    const fy = dt.getMonth() >= 6 ? dt.getFullYear() + 1 : dt.getFullYear();
+    if (!fyXranges[fy]) fyXranges[fy] = { x1: xC, x2: xC };
+    fyXranges[fy].x2 = xC;
+
+    if (prevFY !== null && fy !== prevFY) {
+      const divX = PL + slot * i;
+      fyDividers += `<line x1="${divX.toFixed(1)}" y1="${PT}" x2="${divX.toFixed(1)}" y2="${(PT+cH).toFixed(1)}"
+        stroke="#c8c6be" stroke-width="1" stroke-dasharray="3,3" style="pointer-events:none"/>`;
     }
-    const dt  = new Date(m.month);
+    prevFY = fy;
+
+    const finops = m[actualKey];
+    const actual = m[overheadKey];
+    if (finops != null && finops > 0) {
+      const totalH  = (finops / yMax) * cH;
+      const actualH = actual != null ? (Math.min(actual, finops) / yMax) * cH : totalH;
+      const overH   = totalH - actualH; // shared alloc + telstra diff segment
+      const yBase   = PT + cH;
+      const yActual = yBase - actualH;
+      const yTop    = yBase - totalH;
+
+      // Base segment: actual spend (solid bar colour)
+      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${yActual.toFixed(1)}" width="${barW.toFixed(1)}" height="${actualH.toFixed(1)}"
+        fill="${barColor}" rx="3" data-month="${m.month}" data-actual-key="${actualKey}" data-fc-key="${fcKey}" data-works-key="${worksKey}"
+        data-overhead-key="${overheadKey}"/>`;
+
+      // Top segment: overhead (shared alloc + telstra diff), lighter tint
+      if (overH > 0.5) {
+        bars += `<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${overH.toFixed(1)}"
+          fill="${barColor}" rx="3" opacity="0.38" style="pointer-events:none"/>`;
+        // 2px gap between segments for visual separation
+        bars += `<rect x="${x.toFixed(1)}" y="${(yActual-1).toFixed(1)}" width="${barW.toFixed(1)}" height="2"
+          fill="white" opacity="0.6" style="pointer-events:none"/>`;
+      }
+
+      // Value label on top of bar if tall enough
+      if (totalH > 22)
+        bars += `<text x="${xC.toFixed(1)}" y="${(yTop-4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="600"
+          fill="#3a3a3a" style="pointer-events:none">$${(finops/1000).toFixed(0)}k</text>`;
+    }
+
+    // MoM trend arrow on X axis label
+    const prev = i > 0 ? months[i - 1] : null;
+    const momArrow = (finops != null && prev && prev[actualKey] != null)
+      ? (finops > prev[actualKey]
+          ? `<tspan fill="#C0392B" font-size="9"> ▲</tspan>`
+          : finops < prev[actualKey]
+          ? `<tspan fill="#27AE60" font-size="9"> ▼</tspan>`
+          : "")
+      : "";
+
     const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"});
-    // Rotate labels -40° anchored at bottom of chart
-    xLbls += `<text transform="rotate(-40,${xC.toFixed(1)},${(PT+cH+10).toFixed(1)})"
-      x="${xC.toFixed(1)}" y="${(PT+cH+10).toFixed(1)}"
-      text-anchor="end" font-size="10" fill="#52514e">${lbl}</text>`;
+    xLbls += `<text transform="rotate(-40,${xC.toFixed(1)},${(PT+cH+12).toFixed(1)})"
+      x="${xC.toFixed(1)}" y="${(PT+cH+12).toFixed(1)}"
+      text-anchor="end" font-size="10" fill="#52514e">${lbl}${momArrow}</text>`;
   });
 
-  // Forecast dashed line + dots
+  // FY total annotations above dividers
+  Object.entries(fyTotals).forEach(([fy, total]) => {
+    const range = fyXranges[fy];
+    if (!range) return;
+    const midX = (range.x1 + range.x2) / 2;
+    fyLabels += `<text x="${midX.toFixed(1)}" y="${(PT-10).toFixed(1)}" text-anchor="middle"
+      font-size="9" fill="#8a8880" font-style="italic">FY${fy} $${(total/1000).toFixed(0)}k</text>`;
+  });
+
+  // ── Telstra invoice reference line ────────────────────────────────────────
+  let invoiceLine = "";
+  const invoiceMonths = months.filter(m => m.telstra_invoice > 0);
+  if (invoiceMonths.length) {
+    // Draw per-month step line where invoice is available
+    invoiceMonths.forEach((m, idx) => {
+      const i  = months.indexOf(m);
+      const xC = PL + slot * i + slot / 2;
+      const y  = PT + cH - (m.telstra_invoice / yMax) * cH;
+      const x1 = (xC - barW / 2 - 2).toFixed(1);
+      const x2 = (xC + barW / 2 + 2).toFixed(1);
+      invoiceLine += `<line x1="${x1}" y1="${y.toFixed(1)}" x2="${x2}" y2="${y.toFixed(1)}"
+        stroke="#455A64" stroke-width="2" stroke-linecap="round" style="pointer-events:none"/>`;
+    });
+    // Label on last invoice data point
+    const last = invoiceMonths[invoiceMonths.length - 1];
+    const lastI = months.indexOf(last);
+    const lastX = PL + slot * lastI + slot / 2 + barW / 2 + 4;
+    const lastY = PT + cH - (last.telstra_invoice / yMax) * cH;
+    invoiceLine += `<text x="${lastX.toFixed(1)}" y="${(lastY+3).toFixed(1)}"
+      font-size="9" fill="#455A64" font-weight="600">Invoice</text>`;
+  }
+
+  // ── Forecast centre line (on top of band) ────────────────────────────────
   let fcPath = "", fcDots = "";
   months.forEach((m, i) => {
-    const val = m[fcKey];
-    if (val == null) return;
+    if (m[fcKey] == null) return;
     const xC = PL + slot * i + slot / 2;
-    const y  = PT + cH - (val / yMax) * cH;
+    const y  = PT + cH - (m[fcKey] / yMax) * cH;
     fcPath += fcPath === "" ? `M${xC.toFixed(1)},${y.toFixed(1)}` : ` L${xC.toFixed(1)},${y.toFixed(1)}`;
-    fcDots += `<circle cx="${xC.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${fcColor}" stroke="#fff" stroke-width="2" style="pointer-events:none"/>`;
+    fcDots += `<circle cx="${xC.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${fcColor}" stroke="#fff" stroke-width="1.5" style="pointer-events:none"/>`;
   });
   const fcLine = fcPath
-    ? `<path d="${fcPath}" fill="none" stroke="${fcColor}" stroke-width="2.5" stroke-dasharray="6,4" stroke-linecap="round"/>${fcDots}`
+    ? `<path d="${fcPath}" fill="none" stroke="${fcColor}" stroke-width="2" stroke-dasharray="5,4" stroke-linecap="round" style="pointer-events:none"/>${fcDots}`
     : "";
 
-  // Legend (top-left)
-  const legend = `
-    <rect x="${PL}" y="7" width="10" height="8" fill="${barColor}" rx="2"/>
-    <text x="${PL+14}" y="14" font-size="10" fill="#52514e">Actual</text>
-    ${fcPath ? `<line x1="${PL+58}" y1="11" x2="${PL+72}" y2="11" stroke="${fcColor}" stroke-width="2" stroke-dasharray="5,3"/>
-    <circle cx="${PL+65}" cy="11" r="2.5" fill="${fcColor}"/>
-    <text x="${PL+76}" y="14" font-size="10" fill="#52514e">Forecast</text>` : ""}`;
+  // ── Legend ────────────────────────────────────────────────────────────────
+  let legendX = PL;
+  const legend = [
+    `<rect x="${legendX}" y="9" width="10" height="8" fill="${barColor}" rx="2"/>`,
+    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Actual spend</text>`,
+  ];
+  legendX += 90;
+  legend.push(
+    `<rect x="${legendX}" y="9" width="10" height="8" fill="${barColor}" rx="2" opacity="0.38"/>`,
+    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Shared alloc + diff</text>`,
+  );
+  legendX += 118;
+  if (fcPath) {
+    legend.push(
+      `<rect x="${legendX}" y="10" width="14" height="6" fill="${fcColor}" opacity="0.15" rx="1"/>`,
+      `<line x1="${legendX}" y1="13" x2="${legendX+14}" y2="13" stroke="${fcColor}" stroke-width="1.5" stroke-dasharray="4,3"/>`,
+      `<text x="${legendX+18}" y="16" font-size="10" fill="#52514e">Forecast ±5%</text>`,
+    );
+    legendX += 108;
+  }
+  if (invoiceMonths.length) {
+    legend.push(
+      `<line x1="${legendX}" y1="13" x2="${legendX+14}" y2="13" stroke="#455A64" stroke-width="2" stroke-linecap="round"/>`,
+      `<text x="${legendX+18}" y="16" font-size="10" fill="#52514e">Telstra Invoice</text>`,
+    );
+  }
 
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible"
     font-family="'Segoe UI',system-ui,sans-serif">
-    ${grid}${yLbls}${bars}${fcLine}${xLbls}${legend}
+    ${grid}${yLbls}${bandPath}${fyDividers}${bars}${invoiceLine}${fcLine}${xLbls}${fyLabels}${legend.join("")}
   </svg>`;
 
-  // Status badge on the card header
+  // ── Status badge ──────────────────────────────────────────────────────────
   const statusEl = document.getElementById(statusId);
   if (statusEl) {
     const latest = [...months].reverse().find(m => m[actualKey] != null);
@@ -1244,7 +1363,7 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
     }
   }
 
-  // Hover events
+  // ── Hover events ──────────────────────────────────────────────────────────
   el.querySelectorAll(".chart-bar").forEach(bar => {
     bar.addEventListener("mouseenter", e => showSingleTip(e, bar));
     bar.addEventListener("mousemove",  e => posBarTip(e));
@@ -1265,16 +1384,20 @@ function showSingleTip(e, bar) {
   const prev  = idx > 0 ? summaryData[idx - 1] : null;
   if (!mData) return;
 
-  const actual = mData[actualKey];
-  const fc     = mData[fcKey];
-  const dt     = new Date(month);
-  const lbl    = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
+  const actual       = mData[actualKey];
+  const overheadKey  = bar.dataset.overheadKey;
+  const baseActual   = overheadKey ? mData[overheadKey] : null;
+  const overhead     = (actual != null && baseActual != null) ? actual - baseActual : null;
+  const fc           = mData[fcKey];
+  const invoice      = mData.telstra_invoice;
+  const dt           = new Date(month);
+  const lbl          = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
 
   let html = `<strong style="font-size:.82rem">${lbl}</strong>`;
 
-  // Actual + MoM delta
+  // FinOps total + MoM delta
   if (actual != null) {
-    html += `<br/>Actual: <strong>${fmt(actual)}</strong>`;
+    html += `<br/>FinOps Total: <strong>${fmt(actual)}</strong>`;
     if (prev && prev[actualKey] != null) {
       const delta = actual - prev[actualKey];
       const pct   = (delta / Math.abs(prev[actualKey]) * 100).toFixed(1);
@@ -1284,13 +1407,30 @@ function showSingleTip(e, bar) {
     }
   }
 
-  // vs Forecast
+  // Stacked bar breakdown
+  if (baseActual != null)
+    html += `<br/><span style="opacity:.8;font-size:.76rem">Actual spend: ${fmt(baseActual)}</span>`;
+  if (overhead != null && overhead > 0)
+    html += `<br/><span style="opacity:.8;font-size:.76rem">Shared alloc + diff: ${fmt(overhead)}</span>`;
+
+  // vs Forecast band
   if (fc != null) {
-    const diff = actual != null ? actual - fc : null;
-    html += `<br/>Forecast: ${fmt(fc)}`;
+    const diff   = actual != null ? actual - fc : null;
+    const inBand = diff != null && Math.abs(diff) <= fc * 0.05;
+    html += `<br/>Forecast: ${fmt(fc)} <span style="font-size:.74rem;opacity:.7">(±5% band: ${fmt(fc*0.95)}–${fmt(fc*1.05)})</span>`;
     if (diff != null) {
-      const col = diff > 0 ? "#f0a0a0" : "#8de8a0";
-      html += ` <span style="color:${col}">${diff > 0 ? "+" : ""}${fmt(diff)} vs forecast</span>`;
+      const col = inBand ? "#8de8a0" : diff > 0 ? "#f0a0a0" : "#8de8a0";
+      html += ` <span style="color:${col}">${diff > 0 ? "+" : ""}${fmt(diff)}</span>`;
+    }
+  }
+
+  // vs Telstra Invoice (Run Cost chart only)
+  if (invoice > 0 && actualKey === "run_finops") {
+    const gap = actual != null ? actual - invoice : null;
+    html += `<br/>Telstra Invoice: ${fmt(invoice)}`;
+    if (gap != null) {
+      const col = gap > 0 ? "#f0a0a0" : "#8de8a0";
+      html += ` <span style="color:${col}">${gap > 0 ? "+" : ""}${fmt(gap)}</span>`;
     }
   }
 
