@@ -651,11 +651,10 @@ async function loadRunCost(month) {
   document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
   document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
 
-  // Telstra invoice detail: diff vs total actuals incl. ALL marketplace (adjusted or not)
+  // Telstra invoice detail: diff vs gross CUR spend (all AWS charges before any adjustments)
   const telstraSub = document.getElementById("kpi-telstra-sub");
-  // total_cur = all named + unmatched CUR spend net of adjustments (includes Billing/Shared marketplace)
-  // add back pos_adj to restore the marketplace amounts that were removed via PO adjustments
-  const actualsTotal = (d.total_cur || 0) + (d.total_marketplace_pos_adj || 0);
+  // total_expense_cur + total_marketplace_cur = raw CUR charges across ALL accounts, all categories
+  const actualsTotal = (d.total_expense_cur || 0) + (d.total_marketplace_cur || 0);
   if (hasTelstra && actualsTotal) {
     const diff = d.telstra_invoice - actualsTotal;
     const pct  = (diff / actualsTotal * 100).toFixed(1);
