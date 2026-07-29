@@ -33,10 +33,10 @@ a{color:var(--yellow)}
 .tab-panel.active{display:block}
 
 /* ── cards ── */
-.kpi-row{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
-.kpi{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px 20px;flex:1;min-width:160px}
-.kpi-label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.kpi-val{font-size:1.35rem;font-weight:700;color:var(--navy)}
+.kpi-row{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:120px}
+.kpi-label{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.kpi-val{font-size:1.15rem;font-weight:700;color:var(--navy)}
 .kpi-sub{font-size:.68rem;color:var(--muted);margin-top:5px;line-height:1.4}
 .kpi-val.red{color:var(--red)}
 .kpi-val.green{color:var(--green)}
@@ -198,7 +198,7 @@ input[type=file]{display:none}
 
 <div class="tabs">
   <button class="tab-btn active" data-tab="summary">📈 Summary</button>
-  <button class="tab-btn" data-tab="runcost">📊 Run Cost</button>
+  <button class="tab-btn" data-tab="runcost">📊 Detailed Monthly AWS Consumption</button>
   <button class="tab-btn" data-tab="upload">📤 Upload CUR</button>
   <button class="tab-btn" data-tab="workloads">⚙️ Workloads</button>
 </div>
@@ -215,9 +215,11 @@ input[type=file]{display:none}
     Based on the last CUR update: <strong id="last-upload-ts">—</strong>
   </div>
 
-  <!-- Month selector -->
-  <div class="controls" id="month-controls" style="display:none">
-    <span style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase">Month:</span>
+  <!-- Month selector: FY dropdown + month pills -->
+  <div class="controls" id="month-controls" style="display:none;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap">Financial Year:</span>
+    <select id="fy-select" style="font-size:.82rem;font-weight:600;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--navy);cursor:pointer;outline:none"></select>
+    <span style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap">Month:</span>
     <div class="month-pills" id="month-pills"></div>
   </div>
 
@@ -239,43 +241,44 @@ input[type=file]{display:none}
     <span id="save-ok" style="display:none;font-size:.78rem;color:var(--green)">✓ Saved</span>
   </div>
 
-  <!-- KPI cards -->
-  <div class="kpi-row" id="kpi-row" style="display:none">
-    <div class="kpi" style="border-top:3px solid #1565C0">
-      <div class="kpi-label">Shared Cost Pool</div>
-      <div class="kpi-val" id="kpi-shared">—</div>
-      <div class="kpi-sub">AWS Networks, Billing, Network F5 &amp; Firewall — distributed proportionally to all workloads</div>
-    </div>
-    <div class="kpi" style="border-top:3px solid #2B3752">
+  <!-- KPI cards row 1 -->
+  <div class="kpi-row" id="kpi-row" style="display:none;flex-wrap:nowrap">
+    <div class="kpi" style="border-top:3px solid #2B3752;min-width:0;flex:1">
       <div class="kpi-label">Run Cost</div>
       <div class="kpi-val" id="kpi-run">—</div>
       <div class="kpi-sub">Consumption workloads incl. shared cost allocation &amp; Telstra diff</div>
     </div>
-    <div class="kpi" style="border-top:3px solid #6A1B9A">
+    <div class="kpi" style="border-top:3px solid #6A1B9A;min-width:0;flex:1">
       <div class="kpi-label">Project Cost</div>
       <div class="kpi-val" id="kpi-proj">—</div>
       <div class="kpi-sub">Project X-charge workloads incl. shared cost allocation &amp; Telstra diff</div>
     </div>
-    <div class="kpi" style="border-top:3px solid #E65100">
+    <div class="kpi" style="border-top:3px solid #1565C0;min-width:0;flex:1">
+      <div class="kpi-label">Shared Cost Pool</div>
+      <div class="kpi-val" id="kpi-shared">—</div>
+      <div class="kpi-sub">AWS Networks, Billing, Network F5 &amp; Firewall — distributed proportionally to all workloads</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #E65100;min-width:0;flex:1">
       <div class="kpi-label">Marketplace (via PO)</div>
       <div class="kpi-val" id="kpi-mktadj">—</div>
       <div class="kpi-sub">Marketplace purchases paid via separate PO</div>
     </div>
-    <div class="kpi">
+    <div class="kpi" style="min-width:0;flex:1">
       <div class="kpi-label">Grand Total</div>
       <div class="kpi-val" id="kpi-grand">—</div>
       <div class="kpi-sub">Run Cost + Project Cost + Marketplace via PO</div>
     </div>
-    <div class="kpi">
-      <div class="kpi-label">Dev vs Run Forecast</div>
-      <div class="kpi-val" id="kpi-dev">—</div>
-      <div class="kpi-sub">Run Cost vs monthly forecast</div>
-    </div>
-    <div class="kpi" style="border-top:3px solid #455A64">
+    <div class="kpi" style="border-top:3px solid #455A64;min-width:0;flex:1">
       <div class="kpi-label">Telstra Invoice</div>
       <div class="kpi-val" id="kpi-telstra">—</div>
-      <div class="kpi-sub">Telstra invoice as entered</div>
+      <div class="kpi-sub" id="kpi-telstra-sub">Telstra invoice as entered</div>
     </div>
+  </div>
+  <!-- Dev vs Forecast banner -->
+  <div id="kpi-dev-banner" style="display:none;background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 20px;margin-bottom:16px;display:flex;align-items:center;gap:16px">
+    <span style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Dev vs Run Forecast</span>
+    <span class="kpi-val" id="kpi-dev" style="font-size:1.1rem">—</span>
+    <span style="font-size:.75rem;color:var(--muted)">Run Cost vs monthly forecast target</span>
   </div>
 
   <!-- Main table -->
@@ -495,15 +498,43 @@ function devCell(v) {
 }
 
 // ── Months ────────────────────────────────────────────────────────────────────
-async function loadMonths() {
-  const d = await fetch(API + "/months").then(r => r.json());
-  const months = d.months || [];
+let allMonths = [];
+
+function getFY(monthStr) {
+  // Cochlear FY: Jul–Jun. e.g. "2026-07-01" → FY27
+  const dt = new Date(monthStr);
+  return dt.getMonth() >= 6 ? dt.getFullYear() + 1 : dt.getFullYear();
+}
+
+function buildMonthPills(fy) {
   const pills = document.getElementById("month-pills");
   pills.innerHTML = "";
+  const fyMonths = allMonths.filter(m => getFY(m) === fy);
+  fyMonths.forEach(m => {
+    const btn = document.createElement("button");
+    btn.className = "month-pill";
+    btn.dataset.month = m;
+    const dt = new Date(m);
+    btn.textContent = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"}).replace(" ", "-");
+    btn.addEventListener("click", () => selectMonth(m));
+    pills.appendChild(btn);
+  });
+  // Highlight active month if it belongs to this FY
+  if (selMonth && getFY(selMonth) === fy) {
+    pills.querySelectorAll(".month-pill").forEach(p =>
+      p.classList.toggle("active", p.dataset.month === selMonth));
+  }
+  return fyMonths;
+}
 
-  if (!months.length) {
+async function loadMonths() {
+  const d = await fetch(API + "/months").then(r => r.json());
+  allMonths = d.months || [];
+  const fySelect = document.getElementById("fy-select");
+
+  if (!allMonths.length) {
     document.getElementById("no-data-msg").style.display = "block";
-    ["last-upload-bar","month-controls","inputs-bar","kpi-row"].forEach(id =>
+    ["last-upload-bar","month-controls","inputs-bar","kpi-row","kpi-dev-banner"].forEach(id =>
       document.getElementById(id).style.display = "none");
     document.getElementById("runcost-wrap").innerHTML = "";
     return;
@@ -518,27 +549,49 @@ async function loadMonths() {
     document.getElementById("last-upload-bar").style.display = "block";
   }
 
-  months.forEach(m => {
-    const btn = document.createElement("button");
-    btn.className = "month-pill";
-    btn.dataset.month = m;
-    // Display as "May-25" style
-    const dt = new Date(m);
-    btn.textContent = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"}).replace(" ", "-");
-    btn.addEventListener("click", () => selectMonth(m));
-    pills.appendChild(btn);
+  // Build FY dropdown
+  const fySet = [...new Set(allMonths.map(getFY))].sort((a, b) => a - b);
+  fySelect.innerHTML = "";
+  fySet.forEach(fy => {
+    const opt = document.createElement("option");
+    opt.value = fy;
+    opt.textContent = "FY" + String(fy).slice(-2);
+    fySelect.appendChild(opt);
   });
 
-  // Auto-select the latest month
-  if (!selMonth || !months.includes(selMonth)) {
-    selMonth = months[months.length - 1];
+  // Auto-select FY of selMonth or latest FY
+  const targetFY = selMonth ? getFY(selMonth) : fySet[fySet.length - 1];
+  fySelect.value = fySet.includes(targetFY) ? targetFY : fySet[fySet.length - 1];
+  buildMonthPills(Number(fySelect.value));
+
+  fySelect.addEventListener("change", () => {
+    const fy = Number(fySelect.value);
+    const fyMonths = buildMonthPills(fy);
+    // Auto-select latest month in that FY
+    if (fyMonths.length) selectMonth(fyMonths[fyMonths.length - 1]);
+  });
+
+  // Auto-select the latest month overall or restore selMonth
+  if (!selMonth || !allMonths.includes(selMonth)) {
+    selMonth = allMonths[allMonths.length - 1];
+    fySelect.value = getFY(selMonth);
+    buildMonthPills(getFY(selMonth));
   }
   selectMonth(selMonth);
 }
 
 async function selectMonth(month) {
   selMonth = month;
-  document.querySelectorAll(".month-pill").forEach(p =>
+  // Sync FY dropdown if needed
+  const fySelect = document.getElementById("fy-select");
+  if (fySelect) {
+    const fy = getFY(month);
+    if (fySelect.value != fy) {
+      fySelect.value = fy;
+      buildMonthPills(fy);
+    }
+  }
+  document.querySelectorAll("#month-pills .month-pill").forEach(p =>
     p.classList.toggle("active", p.dataset.month === month));
   await loadInputs(month);
   await loadRunCost(month);
@@ -578,18 +631,36 @@ async function loadRunCost(month) {
   const mLabel = dt.toLocaleDateString("en-AU", {month:"short", year:"numeric"});
 
   // KPI cards
-  document.getElementById("kpi-shared").textContent  = fmt(d.shared_pool);
   document.getElementById("kpi-run").textContent     = fmt(d.total_consumption_finops);
   document.getElementById("kpi-proj").textContent    = fmt(d.total_project_finops);
+  document.getElementById("kpi-shared").textContent  = fmt(d.shared_pool);
   document.getElementById("kpi-mktadj").textContent  = fmt(d.total_marketplace_pos_adj || 0);
   document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
   document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
 
+  // Telstra invoice detail: vs total cost (run + project + shared pool)
+  const totalCostBreakdown = d.total_consumption_finops + d.total_project_finops + d.total_marketplace_pos_adj;
+  const telstraSub = document.getElementById("kpi-telstra-sub");
+  if (hasTelstra && totalCostBreakdown) {
+    const diff = d.telstra_invoice - totalCostBreakdown;
+    const pct  = (diff / totalCostBreakdown * 100).toFixed(1);
+    const sign = diff >= 0 ? "+" : "";
+    telstraSub.innerHTML = `vs total cost (Run+Proj+MKT): <strong style="color:${diff>=0?'var(--red)':'var(--green)'}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
+  } else {
+    telstraSub.textContent = "Telstra invoice as entered";
+  }
+
+  // Dev vs forecast banner
+  const devBanner = document.getElementById("kpi-dev-banner");
   const devEl = document.getElementById("kpi-dev");
   if (d.deviation_run != null) {
+    devBanner.style.display = "flex";
     devEl.textContent = (d.deviation_run > 0 ? "+" : "") + fmt(d.deviation_run);
     devEl.className   = "kpi-val " + (d.deviation_run > 0 ? "red" : "green");
-  } else { devEl.textContent = "No forecast"; devEl.className = "kpi-val"; }
+  } else {
+    devBanner.style.display = "none";
+    devEl.textContent = "No forecast"; devEl.className = "kpi-val";
+  }
 
   const prev = d.prev_actuals || {};
   function momIndicator(workload, actual) {
