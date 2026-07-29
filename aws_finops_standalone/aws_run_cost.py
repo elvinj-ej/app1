@@ -270,14 +270,18 @@ def compute(month: str) -> dict:
     })
 
     # ── Totals ────────────────────────────────────────────────────────────────
-    total_shared_actual        = sum(r["actual"] for r in shared_rows)
-    total_consumption_actual   = sum(r["actual"] for r in consumption_rows)
-    total_project_actual       = sum(r["actual"] for r in project_rows)
-    total_consumption_finops   = sum(r["total"]  for r in consumption_rows)
-    total_project_finops       = sum(r["total"]  for r in project_rows)
-    total_consumption_budget   = sum(r["budget_monthly"] for r in consumption_rows if r["budget_monthly"])
-    total_project_budget       = sum(r["budget_monthly"] for r in project_rows     if r["budget_monthly"])
-    grand_total                = total_consumption_finops + total_project_finops
+    total_shared_actual           = sum(r["actual"]       for r in shared_rows)
+    total_consumption_actual      = sum(r["actual"]       for r in consumption_rows)
+    total_project_actual          = sum(r["actual"]       for r in project_rows)
+    total_consumption_shared_alloc= sum(r["shared_alloc"] for r in consumption_rows)
+    total_project_shared_alloc    = sum(r["shared_alloc"] for r in project_rows)
+    total_consumption_telstra_diff= sum(r["telstra_diff"] for r in consumption_rows)
+    total_project_telstra_diff    = sum(r["telstra_diff"] for r in project_rows)
+    total_consumption_finops      = sum(r["total"]        for r in consumption_rows)
+    total_project_finops          = sum(r["total"]        for r in project_rows)
+    total_consumption_budget      = sum(r["budget_monthly"] for r in consumption_rows if r["budget_monthly"])
+    total_project_budget          = sum(r["budget_monthly"] for r in project_rows     if r["budget_monthly"])
+    grand_total                   = total_consumption_finops + total_project_finops
 
     return {
         "month":                    month,
@@ -294,8 +298,12 @@ def compute(month: str) -> dict:
         "shared_pool":              shared_pool,
         "run_proj_total":           run_proj_total,
         "total_shared_actual":      total_shared_actual,
-        "total_consumption_actual": total_consumption_actual,
-        "total_project_actual":     total_project_actual,
+        "total_consumption_actual":       total_consumption_actual,
+        "total_project_actual":           total_project_actual,
+        "total_consumption_shared_alloc": total_consumption_shared_alloc,
+        "total_project_shared_alloc":     total_project_shared_alloc,
+        "total_consumption_telstra_diff": total_consumption_telstra_diff,
+        "total_project_telstra_diff":     total_project_telstra_diff,
         "total_consumption_finops": total_consumption_finops,
         "total_project_finops":     total_project_finops,
         "total_consumption_budget": total_consumption_budget,

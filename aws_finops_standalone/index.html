@@ -1153,8 +1153,11 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
   const W = 900, H = 320, PL = 72, PR = 24, PT = 32, PB = 60;
   const cW = W - PL - PR, cH = H - PT - PB;
 
-  // Derive the "overhead" key (shared alloc + telstra diff = finops - actual)
-  const overheadKey = actualKey === "run_finops" ? "run_actual" : "project_actual";
+  // Segment keys for the stacked bar
+  const prefix       = actualKey === "run_finops" ? "run" : "project";
+  const actualSegKey = prefix + "_actual";
+  const sharedSegKey = prefix + "_shared_alloc";
+  const tdSegKey     = prefix + "_telstra_diff";
 
   const allVals = months.flatMap(m => [m[actualKey] || 0, m[fcKey] || 0]);
   const maxVal  = Math.max(...allVals);
@@ -1196,18 +1199,18 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
       fill="${fcColor}" opacity="0.10" style="pointer-events:none"/>`;
   }
 
-  // ── Stacked bars + X labels ───────────────────────────────────────────────
-  let bars = "", xLbls = "", fyDividers = "", fyLabels = "";
-  const barColorLight = barColor + "66"; // 40% opacity tint for overhead segment
+  // ── Stacked bars (3 segments) + X labels ─────────────────────────────────
+  // Segment colours: base=barColor, shared alloc=grey, telstra diff=orange
+  const colShared = "#9E9E9E";
+  const colTD     = "#F0A500";
 
+  let bars = "", xLbls = "", fyDividers = "", fyLabels = "";
   let prevFY = null;
-  const fyXranges = {}; // fy → {x1, x2} for annotation positioning
+  const fyXranges = {};
 
   months.forEach((m, i) => {
-    const xC  = PL + slot * i + slot / 2;
-    const x   = xC - barW / 2;
-
-    // FY boundary divider + annotation
+    const xC = PL + slot * i + slot / 2;
+    const x  = xC - barW / 2;
     const dt = new Date(m.month);
     const fy = dt.getMonth() >= 6 ? dt.getFullYear() + 1 : dt.getFullYear();
     if (!fyXranges[fy]) fyXranges[fy] = { x1: xC, x2: xC };
@@ -1220,44 +1223,57 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
     }
     prevFY = fy;
 
-    const finops = m[actualKey];
-    const actual = m[overheadKey];
+    const finops  = m[actualKey];
+    const actual  = m[actualSegKey]  || 0;
+    const shared  = m[sharedSegKey] != null ? m[sharedSegKey] : 0;
+    const td      = m[tdSegKey]     != null ? m[tdSegKey]     : 0;
+
     if (finops != null && finops > 0) {
-      const totalH  = (finops / yMax) * cH;
-      const actualH = actual != null ? (Math.min(actual, finops) / yMax) * cH : totalH;
-      const overH   = totalH - actualH; // shared alloc + telstra diff segment
-      const yBase   = PT + cH;
-      const yActual = yBase - actualH;
-      const yTop    = yBase - totalH;
+      const yBase    = PT + cH;
+      const actualH  = (actual / yMax) * cH;
+      const sharedH  = shared > 0 ? (shared / yMax) * cH : 0;
+      const tdH      = td > 0     ? (td / yMax) * cH     : 0;
+      const totalH   = (finops / yMax) * cH;
 
-      // Base segment: actual spend (solid bar colour)
-      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${yActual.toFixed(1)}" width="${barW.toFixed(1)}" height="${actualH.toFixed(1)}"
-        fill="${barColor}" rx="3" data-month="${m.month}" data-actual-key="${actualKey}" data-fc-key="${fcKey}" data-works-key="${worksKey}"
-        data-overhead-key="${overheadKey}"/>`;
+      const yActualBot = yBase;
+      const yActualTop = yBase - actualH;
+      const ySharedTop = yActualTop - sharedH;
+      const yTDTop     = ySharedTop - tdH;
 
-      // Top segment: overhead (shared alloc + telstra diff), lighter tint
-      if (overH > 0.5) {
-        bars += `<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${overH.toFixed(1)}"
-          fill="${barColor}" rx="3" opacity="0.38" style="pointer-events:none"/>`;
-        // 2px gap between segments for visual separation
-        bars += `<rect x="${x.toFixed(1)}" y="${(yActual-1).toFixed(1)}" width="${barW.toFixed(1)}" height="2"
-          fill="white" opacity="0.6" style="pointer-events:none"/>`;
+      // Segment 1 — Actual spend (solid bar colour, bottom)
+      bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${yActualTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${actualH.toFixed(1)}"
+        fill="${barColor}" rx="3"
+        data-month="${m.month}" data-actual-key="${actualKey}" data-fc-key="${fcKey}"
+        data-works-key="${worksKey}" data-actual-seg="${actual}" data-shared-seg="${shared}" data-td-seg="${td}"/>`;
+
+      // Segment 2 — Shared alloc (grey, middle)
+      if (sharedH > 0.5) {
+        bars += `<rect x="${x.toFixed(1)}" y="${ySharedTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${sharedH.toFixed(1)}"
+          fill="${colShared}" style="pointer-events:none"/>`;
+        bars += `<rect x="${x.toFixed(1)}" y="${(yActualTop-1).toFixed(1)}" width="${barW.toFixed(1)}" height="1.5"
+          fill="white" opacity="0.7" style="pointer-events:none"/>`;
       }
 
-      // Value label on top of bar if tall enough
-      if (totalH > 22)
-        bars += `<text x="${xC.toFixed(1)}" y="${(yTop-4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="600"
-          fill="#3a3a3a" style="pointer-events:none">$${(finops/1000).toFixed(0)}k</text>`;
+      // Segment 3 — Telstra diff (orange, top)
+      if (tdH > 0.5) {
+        bars += `<rect x="${x.toFixed(1)}" y="${yTDTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${tdH.toFixed(1)}"
+          fill="${colTD}" style="pointer-events:none"/>`;
+        bars += `<rect x="${x.toFixed(1)}" y="${(ySharedTop-1).toFixed(1)}" width="${barW.toFixed(1)}" height="1.5"
+          fill="white" opacity="0.7" style="pointer-events:none"/>`;
+      }
+
+      // Value label above bar
+      if (totalH > 18)
+        bars += `<text x="${xC.toFixed(1)}" y="${(Math.min(yTDTop, yActualTop)-4).toFixed(1)}"
+          text-anchor="middle" font-size="9" font-weight="600" fill="#3a3a3a"
+          style="pointer-events:none">$${(finops/1000).toFixed(0)}k</text>`;
     }
 
     // MoM trend arrow on X axis label
-    const prev = i > 0 ? months[i - 1] : null;
-    const momArrow = (finops != null && prev && prev[actualKey] != null)
-      ? (finops > prev[actualKey]
-          ? `<tspan fill="#C0392B" font-size="9"> ▲</tspan>`
-          : finops < prev[actualKey]
-          ? `<tspan fill="#27AE60" font-size="9"> ▼</tspan>`
-          : "")
+    const prevM = i > 0 ? months[i - 1] : null;
+    const momArrow = (finops != null && prevM && prevM[actualKey] != null)
+      ? (finops > prevM[actualKey] ? `<tspan fill="#C0392B" font-size="9"> ▲</tspan>`
+         : finops < prevM[actualKey] ? `<tspan fill="#27AE60" font-size="9"> ▼</tspan>` : "")
       : "";
 
     const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"});
@@ -1266,7 +1282,7 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
       text-anchor="end" font-size="10" fill="#52514e">${lbl}${momArrow}</text>`;
   });
 
-  // FY total annotations above dividers
+  // FY total annotations
   Object.entries(fyTotals).forEach(([fy, total]) => {
     const range = fyXranges[fy];
     if (!range) return;
@@ -1274,29 +1290,6 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
     fyLabels += `<text x="${midX.toFixed(1)}" y="${(PT-10).toFixed(1)}" text-anchor="middle"
       font-size="9" fill="#8a8880" font-style="italic">FY${fy} $${(total/1000).toFixed(0)}k</text>`;
   });
-
-  // ── Telstra invoice reference line ────────────────────────────────────────
-  let invoiceLine = "";
-  const invoiceMonths = months.filter(m => m.telstra_invoice > 0);
-  if (invoiceMonths.length) {
-    // Draw per-month step line where invoice is available
-    invoiceMonths.forEach((m, idx) => {
-      const i  = months.indexOf(m);
-      const xC = PL + slot * i + slot / 2;
-      const y  = PT + cH - (m.telstra_invoice / yMax) * cH;
-      const x1 = (xC - barW / 2 - 2).toFixed(1);
-      const x2 = (xC + barW / 2 + 2).toFixed(1);
-      invoiceLine += `<line x1="${x1}" y1="${y.toFixed(1)}" x2="${x2}" y2="${y.toFixed(1)}"
-        stroke="#455A64" stroke-width="2" stroke-linecap="round" style="pointer-events:none"/>`;
-    });
-    // Label on last invoice data point
-    const last = invoiceMonths[invoiceMonths.length - 1];
-    const lastI = months.indexOf(last);
-    const lastX = PL + slot * lastI + slot / 2 + barW / 2 + 4;
-    const lastY = PT + cH - (last.telstra_invoice / yMax) * cH;
-    invoiceLine += `<text x="${lastX.toFixed(1)}" y="${(lastY+3).toFixed(1)}"
-      font-size="9" fill="#455A64" font-weight="600">Invoice</text>`;
-  }
 
   // ── Forecast centre line (on top of band) ────────────────────────────────
   let fcPath = "", fcDots = "";
@@ -1317,30 +1310,28 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
     `<rect x="${legendX}" y="9" width="10" height="8" fill="${barColor}" rx="2"/>`,
     `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Actual spend</text>`,
   ];
-  legendX += 90;
+  legendX += 92;
   legend.push(
-    `<rect x="${legendX}" y="9" width="10" height="8" fill="${barColor}" rx="2" opacity="0.38"/>`,
-    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Shared alloc + diff</text>`,
+    `<rect x="${legendX}" y="9" width="10" height="8" fill="${colShared}" rx="2"/>`,
+    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Shared alloc</text>`,
   );
-  legendX += 118;
+  legendX += 96;
+  legend.push(
+    `<rect x="${legendX}" y="9" width="10" height="8" fill="${colTD}" rx="2"/>`,
+    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Telstra diff</text>`,
+  );
+  legendX += 90;
   if (fcPath) {
     legend.push(
       `<rect x="${legendX}" y="10" width="14" height="6" fill="${fcColor}" opacity="0.15" rx="1"/>`,
       `<line x1="${legendX}" y1="13" x2="${legendX+14}" y2="13" stroke="${fcColor}" stroke-width="1.5" stroke-dasharray="4,3"/>`,
       `<text x="${legendX+18}" y="16" font-size="10" fill="#52514e">Forecast ±5%</text>`,
     );
-    legendX += 108;
-  }
-  if (invoiceMonths.length) {
-    legend.push(
-      `<line x1="${legendX}" y1="13" x2="${legendX+14}" y2="13" stroke="#455A64" stroke-width="2" stroke-linecap="round"/>`,
-      `<text x="${legendX+18}" y="16" font-size="10" fill="#52514e">Telstra Invoice</text>`,
-    );
   }
 
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible"
     font-family="'Segoe UI',system-ui,sans-serif">
-    ${grid}${yLbls}${bandPath}${fyDividers}${bars}${invoiceLine}${fcLine}${xLbls}${fyLabels}${legend.join("")}
+    ${grid}${yLbls}${bandPath}${fyDividers}${bars}${fcLine}${xLbls}${fyLabels}${legend.join("")}
   </svg>`;
 
   // ── Status badge ──────────────────────────────────────────────────────────
@@ -1384,14 +1375,13 @@ function showSingleTip(e, bar) {
   const prev  = idx > 0 ? summaryData[idx - 1] : null;
   if (!mData) return;
 
-  const actual       = mData[actualKey];
-  const overheadKey  = bar.dataset.overheadKey;
-  const baseActual   = overheadKey ? mData[overheadKey] : null;
-  const overhead     = (actual != null && baseActual != null) ? actual - baseActual : null;
-  const fc           = mData[fcKey];
-  const invoice      = mData.telstra_invoice;
-  const dt           = new Date(month);
-  const lbl          = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
+  const actual     = mData[actualKey];
+  const actualSeg  = parseFloat(bar.dataset.actualSeg  || 0);
+  const sharedSeg  = parseFloat(bar.dataset.sharedSeg  || 0);
+  const tdSeg      = parseFloat(bar.dataset.tdSeg      || 0);
+  const fc         = mData[fcKey];
+  const dt         = new Date(month);
+  const lbl        = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
 
   let html = `<strong style="font-size:.82rem">${lbl}</strong>`;
 
@@ -1407,30 +1397,21 @@ function showSingleTip(e, bar) {
     }
   }
 
-  // Stacked bar breakdown
-  if (baseActual != null)
-    html += `<br/><span style="opacity:.8;font-size:.76rem">Actual spend: ${fmt(baseActual)}</span>`;
-  if (overhead != null && overhead > 0)
-    html += `<br/><span style="opacity:.8;font-size:.76rem">Shared alloc + diff: ${fmt(overhead)}</span>`;
+  // 3-segment breakdown
+  html += `<div style="margin-top:5px;border-top:1px solid rgba(255,255,255,.18);padding-top:5px;font-size:.76rem;line-height:1.8">`;
+  html += `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:currentColor;margin-right:5px;vertical-align:middle"></span>Actual spend: <strong>${fmt(actualSeg)}</strong><br/>`;
+  html += `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#9E9E9E;margin-right:5px;vertical-align:middle"></span><span style="color:#bbb">Shared alloc: <strong>${fmt(sharedSeg)}</strong></span><br/>`;
+  html += `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#F0A500;margin-right:5px;vertical-align:middle"></span><span style="color:#F0A500">Telstra diff: <strong>${fmt(tdSeg)}</strong></span>`;
+  html += `</div>`;
 
   // vs Forecast band
   if (fc != null) {
     const diff   = actual != null ? actual - fc : null;
     const inBand = diff != null && Math.abs(diff) <= fc * 0.05;
-    html += `<br/>Forecast: ${fmt(fc)} <span style="font-size:.74rem;opacity:.7">(±5% band: ${fmt(fc*0.95)}–${fmt(fc*1.05)})</span>`;
+    html += `<br/>Forecast: ${fmt(fc)} <span style="font-size:.74rem;opacity:.7">(±5%: ${fmt(fc*0.95)}–${fmt(fc*1.05)})</span>`;
     if (diff != null) {
       const col = inBand ? "#8de8a0" : diff > 0 ? "#f0a0a0" : "#8de8a0";
       html += ` <span style="color:${col}">${diff > 0 ? "+" : ""}${fmt(diff)}</span>`;
-    }
-  }
-
-  // vs Telstra Invoice (Run Cost chart only)
-  if (invoice > 0 && actualKey === "run_finops") {
-    const gap = actual != null ? actual - invoice : null;
-    html += `<br/>Telstra Invoice: ${fmt(invoice)}`;
-    if (gap != null) {
-      const col = gap > 0 ? "#f0a0a0" : "#8de8a0";
-      html += ` <span style="color:${col}">${gap > 0 ? "+" : ""}${fmt(gap)}</span>`;
     }
   }
 
