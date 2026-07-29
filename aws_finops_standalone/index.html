@@ -1564,7 +1564,7 @@ function updateSummaryKPIs(months) {
   const totalMkt    = actual.reduce((s, m) => s + (m.marketplace_pos_adj || 0), 0);
   const totalTelstra= actual.reduce((s, m) => s + (m.telstra_invoice     || 0), 0);
   const count       = actual.length;
-  const grand       = totalRun + totalProj + totalMkt;
+  const grand       = totalRun + totalProj;
   document.getElementById("sum-kpi-run").textContent     = count ? fmt(totalRun)     : "—";
   document.getElementById("sum-kpi-proj").textContent    = count ? fmt(totalProj)    : "—";
   document.getElementById("sum-kpi-mktadj").textContent  = count ? fmt(totalMkt)     : "—";
