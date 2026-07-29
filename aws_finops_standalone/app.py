@@ -393,16 +393,10 @@ def api_months():
         row = conn.execute(
             "SELECT uploaded_at FROM upload_log ORDER BY id DESC LIMIT 1"
         ).fetchone()
-    last_upload = None
+    last_upload_utc = None
     if row and row["uploaded_at"]:
-        try:
-            raw = str(row["uploaded_at"]).split(".")[0]  # strip fractional seconds
-            dt_utc = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
-            aest = dt_utc + timedelta(hours=10)
-            last_upload = aest.strftime("%-d %b %Y, %-I:%M %p AEST")
-        except Exception:
-            last_upload = str(row["uploaded_at"])
-    return jsonify({"months": months, "last_upload": last_upload})
+        last_upload_utc = str(row["uploaded_at"]).split(".")[0]  # strip fractional seconds, keep "YYYY-MM-DD HH:MM:SS"
+    return jsonify({"months": months, "last_upload_utc": last_upload_utc})
 
 
 # ── API: run cost ─────────────────────────────────────────────────────────────

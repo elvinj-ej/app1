@@ -494,6 +494,15 @@ function switchTab(tab) {
 const fmt = v => v == null ? "—" : "$" + Math.round(v).toLocaleString("en-US");
 const fmtDec = v => v == null ? "—" : "$" + v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
+function fmtAEST(utcStr) {
+  if (!utcStr) return "—";
+  // SQLite returns "YYYY-MM-DD HH:MM:SS" in UTC — convert to ISO8601 for Date()
+  const dt = new Date(utcStr.replace(" ", "T") + "Z");
+  const date = dt.toLocaleDateString("en-AU", {timeZone:"Australia/Sydney", day:"numeric", month:"short", year:"numeric"});
+  const time = dt.toLocaleTimeString("en-AU", {timeZone:"Australia/Sydney", hour:"numeric", minute:"2-digit", hour12:true}).toUpperCase();
+  return `${date}, ${time} AEST`;
+}
+
 function devCell(v) {
   if (v == null) return '<td class="num">—</td>';
   const cls = v > 0 ? "dev-pos" : v < 0 ? "dev-neg" : "";
@@ -548,8 +557,8 @@ async function loadMonths() {
   ["month-controls","inputs-bar","kpi-row"].forEach(id =>
     document.getElementById(id).style.display = "");
 
-  if (d.last_upload) {
-    document.getElementById("last-upload-ts").textContent = d.last_upload;
+  if (d.last_upload_utc) {
+    document.getElementById("last-upload-ts").textContent = fmtAEST(d.last_upload_utc);
     document.getElementById("last-upload-bar").style.display = "block";
   }
 
@@ -642,15 +651,17 @@ async function loadRunCost(month) {
   document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
   document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
 
-  // Telstra invoice detail: diff vs sum of actuals (run + project + shared)
+  // Telstra invoice detail: diff vs total actuals incl. ALL marketplace (adjusted or not)
   const telstraSub = document.getElementById("kpi-telstra-sub");
-  const actualsTotal = (d.total_consumption_actual || 0) + (d.total_project_actual || 0) + (d.total_shared_actual || 0);
+  // actual fields already net of adjustments; add back pos_adj to restore full marketplace spend
+  const actualsTotal = (d.total_consumption_actual || 0) + (d.total_project_actual || 0)
+                     + (d.total_shared_actual || 0) + (d.total_marketplace_pos_adj || 0);
   if (hasTelstra && actualsTotal) {
     const diff = d.telstra_invoice - actualsTotal;
     const pct  = (diff / actualsTotal * 100).toFixed(1);
     const sign = diff >= 0 ? "+" : "";
     const diffColor = Math.abs(parseFloat(pct)) > 3 ? 'var(--red)' : 'var(--green)';
-    telstraSub.innerHTML = `Telstra diff: invoice − actuals (Run+Proj+Shared) = <strong style="color:${diffColor}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
+    telstraSub.innerHTML = `Telstra diff: invoice − actuals (Run+Proj+Shared+MKT) = <strong style="color:${diffColor}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
   } else {
     telstraSub.textContent = "Telstra invoice as entered";
   }
@@ -1048,8 +1059,8 @@ async function loadSummary() {
     fetch(API + "/months").then(r => r.json()).catch(() => ({})),
   ]);
   summaryData = d.months || [];
-  if (mD.last_upload) {
-    document.getElementById("sum-last-upload-ts").textContent = mD.last_upload;
+  if (mD.last_upload_utc) {
+    document.getElementById("sum-last-upload-ts").textContent = fmtAEST(mD.last_upload_utc);
     document.getElementById("sum-last-upload-bar").style.display = "block";
   }
   const noData = msg => {
