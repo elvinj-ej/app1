@@ -653,9 +653,9 @@ async function loadRunCost(month) {
 
   // Telstra invoice detail: diff vs total actuals incl. ALL marketplace (adjusted or not)
   const telstraSub = document.getElementById("kpi-telstra-sub");
-  // actual fields already net of adjustments; add back pos_adj to restore full marketplace spend
-  const actualsTotal = (d.total_consumption_actual || 0) + (d.total_project_actual || 0)
-                     + (d.total_shared_actual || 0) + (d.total_marketplace_pos_adj || 0);
+  // total_cur = all named + unmatched CUR spend net of adjustments (includes Billing/Shared marketplace)
+  // add back pos_adj to restore the marketplace amounts that were removed via PO adjustments
+  const actualsTotal = (d.total_cur || 0) + (d.total_marketplace_pos_adj || 0);
   if (hasTelstra && actualsTotal) {
     const diff = d.telstra_invoice - actualsTotal;
     const pct  = (diff / actualsTotal * 100).toFixed(1);
