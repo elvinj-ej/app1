@@ -131,15 +131,16 @@ def compute(month: str) -> dict:
         return workload_expense.get(name, 0.0) + workload_marketplace.get(name, 0.0) + adj
 
     # Categorise workloads
-    shared_wl  = [w for w in workloads if w["cost_category"] == "Shared"]
-    run_wl     = [w for w in workloads if w["cost_category"] == "Consumption"]
-    project_wl = [w for w in workloads if w["cost_category"] == "Project"]
+    shared_wl    = [w for w in workloads if w["cost_category"] == "Shared"]
+    run_wl       = [w for w in workloads if w["cost_category"] == "Consumption"]
+    project_wl   = [w for w in workloads if w["cost_category"] == "Project"]
+    other_cat_wl = [w for w in workloads if w["cost_category"] == "Other"]
 
     # Shared pool = sum of all Shared account actuals
     shared_pool = sum(net_actual(w["name"]) for w in shared_wl)
 
-    # Named run+project actual total
-    named_run_proj = sum(net_actual(w["name"]) for w in run_wl + project_wl)
+    # Named run+project actual total (includes "Other" category — they share the same pool)
+    named_run_proj = sum(net_actual(w["name"]) for w in run_wl + project_wl + other_cat_wl)
 
     # Unmatched CUR spend → goes into Run Cost "Other" row
     total_expense_cur     = sum(tag_expense.values())
@@ -233,30 +234,39 @@ def compute(month: str) -> dict:
             "deviation":              (total - budget) if budget else None,
         })
 
-    # Other row (unmatched CUR spend in Run Cost)
-    other_shared, other_td = allocs(other_actual)
-    # Sort unmatched tags by spend descending for display
+    # Other row: named "Other" category workloads + truly unmatched CUR tags — one combined row
+    named_other_actual = sum(net_actual(w["name"]) for w in other_cat_wl)
+    combined_other_actual = named_other_actual + other_actual
+    combined_other_shared, combined_other_td = allocs(combined_other_actual)
+
+    # Breakdown: named "Other" workloads sorted by spend, then unmatched tags
+    named_other_breakdown = sorted(
+        [{"tag": w["name"], "amount": net_actual(w["name"])} for w in other_cat_wl if net_actual(w["name"]) != 0],
+        key=lambda x: x["amount"], reverse=True
+    )
     unmatched_breakdown = sorted(
         [{"tag": t, "amount": a} for t, a in unmatched_tags.items()],
         key=lambda x: x["amount"], reverse=True
     )
+    combined_breakdown = named_other_breakdown + unmatched_breakdown
+
     consumption_rows.append({
         "workload":               "Other",
         "domain":                 "ALL",
         "cost_category":          "Consumption",
         "budget_manager":         "",
-        "description":            "Untagged or unmatched CUR spend",
+        "description":            "Grouped workloads + untagged CUR spend",
         "budget_monthly":         None,
-        "actual_expense":         other_actual,
+        "actual_expense":         combined_other_actual,
         "actual_marketplace":     0.0,
         "marketplace_adjustment": 0.0,
         "marketplace_adj_note":   "",
-        "actual":                 other_actual,
-        "shared_alloc":           other_shared,
-        "telstra_diff":           other_td,
-        "total":                  other_actual + other_shared + other_td,
+        "actual":                 combined_other_actual,
+        "shared_alloc":           combined_other_shared,
+        "telstra_diff":           combined_other_td,
+        "total":                  combined_other_actual + combined_other_shared + combined_other_td,
         "deviation":              None,
-        "unmatched_breakdown":    unmatched_breakdown,
+        "unmatched_breakdown":    combined_breakdown,
     })
 
     # ── Totals ────────────────────────────────────────────────────────────────

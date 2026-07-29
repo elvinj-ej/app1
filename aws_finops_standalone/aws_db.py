@@ -27,33 +27,36 @@ _SEED_WORKLOADS = [
     ("GitLab",            "Digital Technology",     "Consumption",       "Sam Jarman",               "",                                                              1352.60),
     ("Shared Services",   "ISD",                    "Consumption",       "Ignus Swart/Jan Willems",  "",                                                              15900.40),
     ("Boomi-Corporate",   "Corporate Supply Chain", "Consumption",       "Joseph Encomienda",        "",                                                              1848.20),
-    # Other tracked workloads (matched from CUR workloads_tag)
-    ("Acoustics",         "",                       "Consumption",       "",                         "",                                                              0),
-    ("AWS Identity",      "",                       "Consumption",       "",                         "",                                                              0),
-    ("AWS Security",      "",                       "Consumption",       "",                         "",                                                              0),
-    ("BBTB",              "",                       "Consumption",       "",                         "",                                                              0),
-    ("CCI",               "",                       "Consumption",       "",                         "",                                                              0),
-    ("CIAM",              "",                       "Consumption",       "",                         "",                                                              0),
-    ("CRIP",              "",                       "Consumption",       "",                         "",                                                              0),
-    ("CSP Sandbox",       "",                       "Consumption",       "",                         "",                                                              0),
-    ("Dexter",            "",                       "Consumption",       "",                         "",                                                              0),
-    ("Disabled",          "",                       "Consumption",       "",                         "",                                                              0),
-    ("DNR",               "",                       "Consumption",       "",                         "",                                                              0),
-    ("Identity",          "",                       "Consumption",       "",                         "",                                                              0),
-    ("Magento",           "",                       "Consumption",       "",                         "",                                                              0),
-    ("Model Gateway",     "",                       "Consumption",       "",                         "",                                                              0),
-    ("MRA",               "",                       "Consumption",       "",                         "",                                                              0),
-    ("Quick Suite",       "",                       "Consumption",       "",                         "",                                                              0),
-    ("R_D",               "",                       "Consumption",       "",                         "",                                                              0),
-    ("Rehosted Apps",     "",                       "Consumption",       "",                         "",                                                              0),
-    ("Rehosted DBs",      "",                       "Consumption",       "",                         "",                                                              0),
-    ("Sandbox",           "",                       "Consumption",       "",                         "",                                                              0),
-    ("SFHC Miterra",      "",                       "Consumption",       "",                         "",                                                              0),
-    ("Sharefile",         "",                       "Consumption",       "",                         "",                                                              0),
-    ("SimpleMDG",         "",                       "Consumption",       "",                         "",                                                              0),
-    ("SBOX",              "",                       "Consumption",       "",                         "",                                                              0),
-    ("Trackwise",         "",                       "Consumption",       "",                         "",                                                              0),
+    # Other tracked workloads — matched from CUR but grouped as one "Other" row in Run Cost
+    ("Acoustics",         "",                       "Other",             "",                         "",                                                              0),
+    ("AWS Identity",      "",                       "Other",             "",                         "",                                                              0),
+    ("AWS Security",      "",                       "Other",             "",                         "",                                                              0),
+    ("BBTB",              "",                       "Other",             "",                         "",                                                              0),
+    ("Boomi-Data",        "",                       "Other",             "",                         "",                                                              0),
+    ("CCI",               "",                       "Other",             "",                         "",                                                              0),
+    ("CIAM",              "",                       "Other",             "",                         "",                                                              0),
+    ("CRIP",              "",                       "Other",             "",                         "",                                                              0),
+    ("CSP Sandbox",       "",                       "Other",             "",                         "",                                                              0),
+    ("Dexter",            "",                       "Other",             "",                         "",                                                              0),
+    ("Disabled",          "",                       "Other",             "",                         "",                                                              0),
+    ("DNR",               "",                       "Other",             "",                         "",                                                              0),
+    ("DPX MCP",           "Corporate Supply Chain", "Other",             "Cherry Zhang",             "Growth in some accounts - agentic workloads",                   0),
+    ("Identity",          "",                       "Other",             "",                         "",                                                              0),
+    ("Magento",           "",                       "Other",             "",                         "",                                                              0),
+    ("MRA",               "",                       "Other",             "",                         "",                                                              0),
+    ("Olingo Odata",      "Corporate Supply Chain", "Other",             "Cherry Zhang",             "",                                                              0),
+    ("Quick Suite",       "",                       "Other",             "",                         "",                                                              0),
+    ("R_D",               "",                       "Other",             "",                         "",                                                              0),
+    ("Rehosted Apps",     "",                       "Other",             "",                         "",                                                              0),
+    ("Rehosted DBs",      "",                       "Other",             "",                         "",                                                              0),
+    ("Sandbox",           "",                       "Other",             "",                         "",                                                              0),
+    ("SFHC Miterra",      "",                       "Other",             "",                         "",                                                              0),
+    ("Sharefile",         "",                       "Other",             "",                         "",                                                              0),
+    ("SimpleMDG",         "",                       "Other",             "",                         "",                                                              0),
+    ("SBOX",              "",                       "Other",             "",                         "",                                                              0),
+    ("Trackwise",         "",                       "Other",             "",                         "",                                                              0),
     # Project X-charge
+    ("Model Gateway",     "",                       "Project",           "",                         "",                                                              0),
     ("CNA",               "Corporate Supply Chain", "Project",           "Leigh Wells",              "",                                                              28013.40),
     ("MES",               "Corporate Supply Chain", "Project",           "Rushka Plunkett",          "",                                                              26000.00),
     ("Clark AI",          "ADA",                    "Project",           "Jiten Shah",               "AWG implementations consideration",                             912.60),
@@ -132,6 +135,24 @@ def init_db():
             ),
             _SHARED_ACCOUNTS,
         )
+
+        # Migrate workloads that should be 'Other' (grouped line in Run Cost)
+        _OTHER_WORKLOADS = (
+            "Acoustics", "AWS Identity", "AWS Security", "BBTB", "Boomi-Data",
+            "CCI", "CIAM", "CRIP", "CSP Sandbox", "Dexter", "Disabled", "DNR",
+            "DPX MCP", "Identity", "Magento", "MRA", "Olingo Odata", "Quick Suite",
+            "R_D", "Rehosted Apps", "Rehosted DBs", "Sandbox", "SFHC Miterra",
+            "Sharefile", "SimpleMDG", "SBOX", "Trackwise",
+        )
+        conn.execute(
+            "UPDATE workloads SET cost_category='Other' WHERE name IN ({})".format(
+                ",".join("?" * len(_OTHER_WORKLOADS))
+            ),
+            _OTHER_WORKLOADS,
+        )
+
+        # Migrate Model Gateway to Project
+        conn.execute("UPDATE workloads SET cost_category='Project' WHERE name='Model Gateway'")
 
         # Schema migrations for existing databases
         existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
