@@ -651,15 +651,14 @@ async function loadRunCost(month) {
   document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
   document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
 
-  // Telstra invoice detail: diff vs total_cur (all CUR spend net of PO adjustments = what flows through Telstra)
+  // Telstra diff = effective_invoice − total_cur (both net of PO adjustments) = true reconciliation gap
   const telstraSub = document.getElementById("kpi-telstra-sub");
-  const actualsTotal = d.total_cur || 0;
-  if (hasTelstra && actualsTotal) {
-    const diff = d.telstra_invoice - actualsTotal;
-    const pct  = (diff / actualsTotal * 100).toFixed(1);
+  if (hasTelstra && d.effective_invoice) {
+    const diff = d.telstra_diff_total || 0;
+    const pct  = (diff / d.effective_invoice * 100).toFixed(1);
     const sign = diff >= 0 ? "+" : "";
     const diffColor = Math.abs(parseFloat(pct)) > 3 ? 'var(--red)' : 'var(--green)';
-    telstraSub.innerHTML = `Telstra diff: invoice − actuals (Run+Proj+Shared+MKT) = <strong style="color:${diffColor}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
+    telstraSub.innerHTML = `Telstra diff: invoice − actuals (net of PO) = <strong style="color:${diffColor}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
   } else {
     telstraSub.textContent = "Telstra invoice as entered";
   }
