@@ -37,6 +37,7 @@ a{color:var(--yellow)}
 .kpi{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px 20px;flex:1;min-width:160px}
 .kpi-label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
 .kpi-val{font-size:1.35rem;font-weight:700;color:var(--navy)}
+.kpi-sub{font-size:.68rem;color:var(--muted);margin-top:5px;line-height:1.4}
 .kpi-val.red{color:var(--red)}
 .kpi-val.green{color:var(--green)}
 
@@ -268,13 +269,41 @@ input[type=file]{display:none}
   </div>
   <!-- KPI tiles -->
   <div class="kpi-row" style="margin-bottom:16px">
-    <div class="kpi" style="border-top:3px solid #2B3752"><div class="kpi-label">Run Cost (Actual)</div><div class="kpi-val" id="sum-kpi-run">—</div></div>
-    <div class="kpi" style="border-top:3px solid #6A1B9A"><div class="kpi-label">Project Cost (Actual)</div><div class="kpi-val" id="sum-kpi-proj">—</div></div>
-    <div class="kpi" style="border-top:3px solid #E65100"><div class="kpi-label">Marketplace (via PO)</div><div class="kpi-val" id="sum-kpi-mktadj">—</div></div>
-    <div class="kpi" style="border-top:3px solid #37474F"><div class="kpi-label">Grand Total (1+2+3)</div><div class="kpi-val" id="sum-kpi-grand">—</div></div>
-    <div class="kpi" style="border-top:3px solid #1565C0"><div class="kpi-label">Telstra Bill Total</div><div class="kpi-val" id="sum-kpi-telstra">—</div></div>
-    <div class="kpi"><div class="kpi-label">Months (selected)</div><div class="kpi-val" id="sum-kpi-months">—</div></div>
-    <div class="kpi"><div class="kpi-label">Avg Monthly Run Cost</div><div class="kpi-val" id="sum-kpi-avg">—</div></div>
+    <div class="kpi" style="border-top:3px solid #2B3752">
+      <div class="kpi-label">Run Cost</div>
+      <div class="kpi-val" id="sum-kpi-run">—</div>
+      <div class="kpi-sub">Consumption workloads incl. shared cost allocation &amp; Telstra diff</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #6A1B9A">
+      <div class="kpi-label">Project Cost</div>
+      <div class="kpi-val" id="sum-kpi-proj">—</div>
+      <div class="kpi-sub">Project X-charge workloads incl. shared cost allocation &amp; Telstra diff</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #E65100">
+      <div class="kpi-label">Marketplace (via PO)</div>
+      <div class="kpi-val" id="sum-kpi-mktadj">—</div>
+      <div class="kpi-sub">Marketplace purchases paid via separate PO — excluded from Telstra billing</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #37474F">
+      <div class="kpi-label">Grand Total (1+2+3)</div>
+      <div class="kpi-val" id="sum-kpi-grand">—</div>
+      <div class="kpi-sub">Total AWS spend across all channels</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #1565C0">
+      <div class="kpi-label">Telstra Bill Total</div>
+      <div class="kpi-val" id="sum-kpi-telstra">—</div>
+      <div class="kpi-sub">Telstra invoice as entered — Run Cost + Project Cost should equal this</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Months (selected)</div>
+      <div class="kpi-val" id="sum-kpi-months">—</div>
+      <div class="kpi-sub">Number of months with actual CUR data in the current filter</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Avg Monthly Run Cost</div>
+      <div class="kpi-val" id="sum-kpi-avg">—</div>
+      <div class="kpi-sub">Average monthly Run Cost finops total over selected period</div>
+    </div>
   </div>
   <!-- Charts stacked vertically -->
   <div style="display:flex;flex-direction:column;gap:16px">
