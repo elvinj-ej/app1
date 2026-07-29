@@ -131,11 +131,14 @@ def compute(month: str) -> dict:
     named_all = sum(net_actual(w["name"]) for w in workloads)
     other_actual = max(0.0, total_expense_cur + total_marketplace_cur + total_adj - named_all)
 
-    # Run + Project denominator includes Other
-    run_proj_total = named_run_proj + other_actual
+    # Denominator for ratio = named run+project workloads only (matches Excel SUM range).
+    # Marketplace adjustments already reduce each workload's net_actual so adjusted
+    # marketplace is naturally excluded; unadjusted marketplace is naturally included.
+    # "Other" is excluded from the ratio so untagged spend doesn't dilute allocations.
+    run_proj_total = named_run_proj
 
-    # total_cur = shared + run + project + other
-    total_cur = shared_pool + run_proj_total
+    # total_cur includes Other so telstra_diff is still computed against the full bill
+    total_cur = shared_pool + named_run_proj + other_actual
 
     telstra_invoice  = float((mi["telstra_invoice"]  if mi else None) or 0)
     forecast_run     = (mi["forecast_run"]     if mi else None)
@@ -203,8 +206,8 @@ def compute(month: str) -> dict:
             "deviation":              (total - budget) if budget else None,
         })
 
-    # Other row (unmatched CUR spend in Run Cost)
-    other_shared, other_td = allocs(other_actual)
+    # Other row (unmatched CUR spend) — excluded from ratio denominator so it receives
+    # no shared allocation or telstra diff; its actual passes through as-is.
     consumption_rows.append({
         "workload":               "Other",
         "domain":                 "ALL",
@@ -217,9 +220,9 @@ def compute(month: str) -> dict:
         "marketplace_adjustment": 0.0,
         "marketplace_adj_note":   "",
         "actual":                 other_actual,
-        "shared_alloc":           other_shared,
-        "telstra_diff":           other_td,
-        "total":                  other_actual + other_shared + other_td,
+        "shared_alloc":           0.0,
+        "telstra_diff":           0.0,
+        "total":                  other_actual,
         "deviation":              None,
     })
 
