@@ -11,7 +11,7 @@
   --border:#E2E5EC;--muted:#7A8194;--red:#C0392B;--green:#1A7A4A;
   --text:#1C2333;--hover:#F9FAFB;
 }
-body{font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;background:var(--bg);color:var(--text)}
+body{font-family:'Segoe UI',system-ui,sans-serif;font-size:17px;background:var(--bg);color:var(--text)}
 a{color:var(--yellow)}
 
 /* ── header ── */
@@ -35,9 +35,9 @@ a{color:var(--yellow)}
 /* ── cards ── */
 .kpi-row{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .kpi{background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:120px}
-.kpi-label{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
-.kpi-val{font-size:1.15rem;font-weight:700;color:var(--navy)}
-.kpi-sub{font-size:.68rem;color:var(--muted);margin-top:5px;line-height:1.4}
+.kpi-label{font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.kpi-val{font-size:1.5rem;font-weight:700;color:var(--navy)}
+.kpi-sub{font-size:.78rem;color:var(--muted);margin-top:5px;line-height:1.4}
 .kpi-val.red{color:var(--red)}
 .kpi-val.green{color:var(--green)}
 
@@ -1184,7 +1184,7 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
     const y   = PT + cH - (val / yMax) * cH;
     grid  += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"
       stroke="${i===0?"#c8c6be":"#e8e6de"}" stroke-width="${i===0?1.5:1}"/>`;
-    yLbls += `<text x="${PL-8}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#6b6960">$${(val/1000).toFixed(0)}k</text>`;
+    yLbls += `<text x="${PL-8}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="5" fill="#6b6960">$${(val/1000).toFixed(0)}k</text>`;
   }
 
   // ── Forecast band (±5% shaded area) ───────────────────────────────────────
@@ -1267,21 +1267,21 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
       // Value label above bar
       if (totalH > 18)
         bars += `<text x="${xC.toFixed(1)}" y="${(Math.min(yTDTop, yActualTop)-4).toFixed(1)}"
-          text-anchor="middle" font-size="9" font-weight="600" fill="#3a3a3a"
+          text-anchor="middle" font-size="5" font-weight="600" fill="#3a3a3a"
           style="pointer-events:none">$${(finops/1000).toFixed(0)}k</text>`;
     }
 
     // MoM trend arrow on X axis label
     const prevM = i > 0 ? months[i - 1] : null;
     const momArrow = (finops != null && prevM && prevM[actualKey] != null)
-      ? (finops > prevM[actualKey] ? `<tspan fill="#C0392B" font-size="9"> ▲</tspan>`
-         : finops < prevM[actualKey] ? `<tspan fill="#27AE60" font-size="9"> ▼</tspan>` : "")
+      ? (finops > prevM[actualKey] ? `<tspan fill="#C0392B" font-size="5"> ▲</tspan>`
+         : finops < prevM[actualKey] ? `<tspan fill="#27AE60" font-size="5"> ▼</tspan>` : "")
       : "";
 
     const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"});
     xLbls += `<text transform="rotate(-40,${xC.toFixed(1)},${(PT+cH+12).toFixed(1)})"
       x="${xC.toFixed(1)}" y="${(PT+cH+12).toFixed(1)}"
-      text-anchor="end" font-size="10" fill="#52514e">${lbl}${momArrow}</text>`;
+      text-anchor="end" font-size="5" fill="#52514e">${lbl}${momArrow}</text>`;
   });
 
   // FY total annotations removed — shown in the FY tracker banner instead
@@ -1303,24 +1303,24 @@ function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, f
   let legendX = PL;
   const legend = [
     `<rect x="${legendX}" y="9" width="10" height="8" fill="${barColor}" rx="2"/>`,
-    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Actual spend</text>`,
+    `<text x="${legendX+14}" y="16" font-size="5" fill="#52514e">Actual spend</text>`,
   ];
   legendX += 92;
   legend.push(
     `<rect x="${legendX}" y="9" width="10" height="8" fill="${colShared}" rx="2"/>`,
-    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Shared alloc</text>`,
+    `<text x="${legendX+14}" y="16" font-size="5" fill="#52514e">Shared alloc</text>`,
   );
   legendX += 96;
   legend.push(
     `<rect x="${legendX}" y="9" width="10" height="8" fill="${colTD}" rx="2"/>`,
-    `<text x="${legendX+14}" y="16" font-size="10" fill="#52514e">Telstra diff</text>`,
+    `<text x="${legendX+14}" y="16" font-size="5" fill="#52514e">Telstra diff</text>`,
   );
   legendX += 90;
   if (fcPath) {
     legend.push(
       `<rect x="${legendX}" y="10" width="14" height="6" fill="${fcColor}" opacity="0.15" rx="1"/>`,
       `<line x1="${legendX}" y1="13" x2="${legendX+14}" y2="13" stroke="${fcColor}" stroke-width="1.5" stroke-dasharray="4,3"/>`,
-      `<text x="${legendX+18}" y="16" font-size="10" fill="#52514e">Forecast ±5%</text>`,
+      `<text x="${legendX+18}" y="16" font-size="5" fill="#52514e">Forecast ±5%</text>`,
     );
   }
 
