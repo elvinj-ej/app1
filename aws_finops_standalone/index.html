@@ -1755,6 +1755,12 @@ function renderProjectBurnRate() {
     const latestMo      = actuals.length ? actuals[actuals.length-1].actual : null;
     const monthLabel    = actuals.length ? (() => { const d=new Date(actuals[actuals.length-1].month+"T00:00:00"); return d.toLocaleDateString("en-AU",{month:"short",year:"2-digit"}); })() : "—";
 
+    const calcNote = `<div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px dashed #e0e0e0">
+      Annual forecast = ${fmt(budget_monthly)}/mo × 12 months = ${fmt(annualBudget)}.
+      Projected = Spent YTD + avg of last ${last3a.length < 3 ? last3a.length : 3} actual month${last3a.length !== 1 ? "s" : ""} (${avgMo ? fmt(avgMo) : "—"}/mo) × ${remainingMos} remaining months.
+      Spent YTD includes actual spend + shared cost allocation + Telstra invoice diff.
+    </div>`;
+
     if (annualBudget > 0) {
       // Projects with annual forecast — full burn rate row
       return `
@@ -1793,6 +1799,7 @@ function renderProjectBurnRate() {
             </div>` : ""}
           </div>
         </div>
+        ${calcNote}
       </div>`;
     } else {
       // Projects without annual forecast — monthly run rate only (actual spend, no shared alloc / telstra diff)
@@ -1855,6 +1862,10 @@ function renderProjectBurnRate() {
         </div>
         <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">${memberBreakdown}</div>
         <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px">Actual spend only — excludes shared cost allocation &amp; Telstra diff. Marketplace via PO already adjusted out.</div>
+        <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px;padding:6px 8px;background:var(--bg);border-radius:4px;border-left:2px solid var(--border)">
+          Annual forecast = Clark AI ${fmt(3000)}/mo + DataInsights ${fmt(3400)}/mo + Sonar ${fmt(9700)}/mo = ${fmt(16100)}/mo × 12 = ${fmt(193200)}.
+          Projected = Spent YTD + avg of last ${last3a.length < 3 ? last3a.length : 3} actual month${last3a.length !== 1 ? "s" : ""} (${avgMo ? fmt(avgMo) : "—"}/mo) × ${remainingMos} remaining months.
+        </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
           ${annualBudget > 0 ? `
           <div style="flex:1;min-width:160px">
@@ -1888,14 +1899,6 @@ function renderProjectBurnRate() {
       </div>`;
   })() : "";
 
-  const projCalcNote = `<div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
-    <strong>How forecasts are calculated:</strong>
-    MES &amp; CNA — Annual forecast = budget/month × 12 months.
-    ADA Projects — Annual forecast = sum of individual monthly budgets × 12 (Clark AI $3k + DataInsights $3.4k + Sonar $9.7k = $16.1k/mo × 12 = $193,200).
-    Projected FY total = Spent YTD + average of last 3 actual months × remaining months.
-    ADA actual spend excludes shared cost allocation and Telstra invoice diff.
-  </div>`;
-
   el.innerHTML = `
   <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 20px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
@@ -1907,7 +1910,6 @@ function renderProjectBurnRate() {
     ${withoutBudget.length ? `
     <div style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:10px 0 6px">Other Projects — Run Rate Only</div>
     ${withoutBudget.map(([name, data]) => projectRow(name, data)).join("")}` : ""}
-    ${projCalcNote}
   </div>`;
   el.style.display = "block";
 }
