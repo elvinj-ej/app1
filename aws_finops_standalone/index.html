@@ -88,6 +88,8 @@ a{color:var(--yellow)}
 .tbl-wrap{overflow-x:auto;margin-bottom:8px}
 table{width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;
       border:1px solid var(--border);border-radius:8px;overflow:hidden}
+table.detail-tbl{table-layout:fixed}
+table.detail-tbl td,table.detail-tbl th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 thead.hd-shared tr{background:var(--col-shared);color:#fff}
 thead.hd-run    tr{background:var(--col-run);color:#fff}
 thead.hd-project tr{background:var(--col-project);color:#fff}
@@ -717,11 +719,15 @@ async function loadRunCost(month) {
     ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>`
     : "";
 
-  function allHead(cls) { return `<thead class="${cls}"><tr>
-    <th style="min-width:140px">Workload</th>
-    <th style="min-width:120px">Domain</th>
-    <th style="min-width:140px">Budget Manager</th>
-    <th style="width:24px"></th>
+  // Fixed column widths shared across ALL tables so columns align visually
+  const COL_W = ["160px","120px","150px","28px","100px","110px","110px",...(hasTelstra?["100px","110px"]:[]),"110px"];
+  const colgroup = `<colgroup>${COL_W.map(w=>`<col style="width:${w}">`).join("")}</colgroup>`;
+
+  function allHead(cls) { return `${colgroup}<thead class="${cls}"><tr>
+    <th>Workload</th>
+    <th>Domain</th>
+    <th>Budget Manager</th>
+    <th></th>
     <th class="num">Budget/mo</th>
     <th class="num">${mLabel} Actual</th>
     <th class="num">Shared Alloc</th>
@@ -796,9 +802,9 @@ async function loadRunCost(month) {
       d.deviation_proj_vs_budget != null ? (d.deviation_proj_vs_budget > 0 ? "+" : "") + fmt(d.deviation_proj_vs_budget) : "—"}</td>
   </tr>`;
 
-  // ── Grand total table — simplified (no Domain / Budget Manager) ──────────
-  const grandHead = `<thead class="hd-run"><tr>
-    <th style="min-width:180px">Category</th>
+  // ── Grand total table — same colgroup so numeric columns align with tables above ──
+  const grandHead = `${colgroup}<thead class="hd-run"><tr>
+    <th colspan="4">Category</th>
     <th class="num">Total Budget/mo</th>
     <th class="num">${mLabel} Actuals</th>
     <th class="num">Total Shared Alloc</th>
@@ -812,7 +818,7 @@ async function loadRunCost(month) {
 
   const grandRows = `
     <tr>
-      <td><strong>Run Cost</strong></td>
+      <td colspan="4"><strong>Run Cost</strong></td>
       <td class="num">${fmt(d.total_consumption_budget)}</td>
       <td class="num">${fmt(d.total_consumption_actual)}</td>
       <td class="num">${fmt(d.total_consumption_shared_alloc)}</td>
@@ -820,7 +826,7 @@ async function loadRunCost(month) {
       <td class="num">${devFmt(d.deviation_run_vs_budget)}</td>
     </tr>
     <tr>
-      <td><strong>Project X-charge</strong></td>
+      <td colspan="4"><strong>Project X-charge</strong></td>
       <td class="num">${fmt(d.total_project_budget)}</td>
       <td class="num">${fmt(d.total_project_actual)}</td>
       <td class="num">${fmt(d.total_project_shared_alloc)}</td>
@@ -828,7 +834,7 @@ async function loadRunCost(month) {
       <td class="num">${devFmt(d.deviation_proj_vs_budget)}</td>
     </tr>
     <tr class="row-grand">
-      <td><strong>GRAND TOTAL</strong></td>
+      <td colspan="4"><strong>GRAND TOTAL</strong></td>
       <td class="num">—</td>
       <td class="num"><strong>${fmt(d.total_consumption_actual + d.total_project_actual)}</strong></td>
       <td class="num"><strong>${fmt(d.shared_pool)}</strong></td>
@@ -842,17 +848,17 @@ async function loadRunCost(month) {
 
   document.getElementById("runcost-wrap").innerHTML = `
     <div class="section-label"><span class="dot dot-shared"></span>Shared Cost Accounts</div>
-    <div class="tbl-wrap"><table>${sharedHead}<tbody>${sRows}</tbody></table></div>
+    <div class="tbl-wrap"><table class="detail-tbl">${sharedHead}<tbody>${sRows}</tbody></table></div>
 
     <div class="section-label" style="margin-top:20px"><span class="dot dot-run"></span>Run Cost — Consumption</div>
-    <div class="tbl-wrap"><table>${rpHead("hd-run")}<tbody>${rRows}</tbody></table></div>
+    <div class="tbl-wrap"><table class="detail-tbl">${rpHead("hd-run")}<tbody>${rRows}</tbody></table></div>
 
     <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>Project X-charge</div>
-    <div class="tbl-wrap"><table>${rpHead("hd-project")}<tbody>${pRows}</tbody></table></div>
+    <div class="tbl-wrap"><table class="detail-tbl">${rpHead("hd-project")}<tbody>${pRows}</tbody></table></div>
 
     <div class="section-label" style="margin-top:20px"><span class="dot" style="background:var(--col-run)"></span>Grand Total Summary</div>
     <div class="tbl-wrap">
-      <table>${grandHead}<tbody>${grandRows}</tbody></table>
+      <table class="detail-tbl">${grandHead}<tbody>${grandRows}</tbody></table>
     </div>
     ${noTelstraNote}`;
 }
