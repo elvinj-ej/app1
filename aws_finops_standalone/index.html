@@ -248,12 +248,22 @@ input[type=file]{display:none}
     <div class="kpi" style="border-top:3px solid #2B3752;min-width:0;flex:1">
       <div class="kpi-label">Run Cost</div>
       <div class="kpi-val" id="kpi-run">—</div>
-      <div class="kpi-sub">Consumption workloads incl. shared cost allocation &amp; Telstra diff</div>
+      <div class="kpi-sub">Actual + shared cost allocation</div>
+      <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Run Cost FinOps Total</div>
+        <div class="kpi-val" id="kpi-run-finops" style="font-size:1.1rem">—</div>
+        <div class="kpi-sub">Incl. Telstra invoice diff</div>
+      </div>
     </div>
     <div class="kpi" style="border-top:3px solid #6A1B9A;min-width:0;flex:1">
       <div class="kpi-label">Project Cost</div>
       <div class="kpi-val" id="kpi-proj">—</div>
-      <div class="kpi-sub">Project X-charge workloads incl. shared cost allocation &amp; Telstra diff</div>
+      <div class="kpi-sub">Actual + shared cost allocation</div>
+      <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Project Cost FinOps Total</div>
+        <div class="kpi-val" id="kpi-proj-finops" style="font-size:1.1rem">—</div>
+        <div class="kpi-sub">Incl. Telstra invoice diff</div>
+      </div>
     </div>
     <div class="kpi" style="border-top:3px solid #1565C0;min-width:0;flex:1">
       <div class="kpi-label">Shared Cost Pool</div>
@@ -661,21 +671,24 @@ async function loadRunCost(month) {
   const mLabel = dt.toLocaleDateString("en-AU", {month:"short", year:"numeric"});
 
   // KPI cards
-  document.getElementById("kpi-run").textContent     = fmt(d.total_consumption_finops);
-  document.getElementById("kpi-proj").textContent    = fmt(d.total_project_finops);
-  document.getElementById("kpi-shared").textContent  = fmt(d.shared_pool);
-  document.getElementById("kpi-mktadj").textContent  = fmt(d.total_marketplace_pos_adj || 0);
-  document.getElementById("kpi-grand").textContent   = fmt(d.grand_total);
-  document.getElementById("kpi-telstra").textContent = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
+  document.getElementById("kpi-run").textContent          = fmt(d.total_consumption_wo_td  || d.total_consumption_actual);
+  document.getElementById("kpi-run-finops").textContent   = fmt(d.total_consumption_finops);
+  document.getElementById("kpi-proj").textContent         = fmt(d.total_project_wo_td      || d.total_project_actual);
+  document.getElementById("kpi-proj-finops").textContent  = fmt(d.total_project_finops);
+  document.getElementById("kpi-shared").textContent       = fmt(d.shared_pool);
+  document.getElementById("kpi-mktadj").textContent       = fmt(d.total_marketplace_pos_adj || 0);
+  document.getElementById("kpi-grand").textContent        = fmt(d.grand_total);
+  document.getElementById("kpi-telstra").textContent      = hasTelstra ? fmt(d.telstra_invoice) : "Not set";
 
-  // Telstra diff = effective_invoice − total_cur (both net of PO adjustments) = true reconciliation gap
+  // Telstra diff = invoice − (run+proj actual+shared + marketplace PO)
   const telstraSub = document.getElementById("kpi-telstra-sub");
-  if (hasTelstra && d.effective_invoice) {
+  if (hasTelstra && d.telstra_invoice) {
     const diff = d.telstra_diff_total || 0;
-    const pct  = (diff / d.effective_invoice * 100).toFixed(1);
+    const base = (d.total_consumption_wo_td || 0) + (d.total_project_wo_td || 0) + (d.total_marketplace_pos_adj || 0);
+    const pct  = base > 0 ? (diff / base * 100).toFixed(1) : "0.0";
     const sign = diff >= 0 ? "+" : "";
     const diffColor = Math.abs(parseFloat(pct)) > 3 ? 'var(--red)' : 'var(--green)';
-    telstraSub.innerHTML = `Telstra diff: invoice − actuals (net of PO) = <strong style="color:${diffColor}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
+    telstraSub.innerHTML = `Telstra diff: invoice − (actual+shared+MKT) = <strong style="color:${diffColor}">${sign}${fmt(diff)} (${sign}${pct}%)</strong>`;
   } else {
     telstraSub.textContent = "Telstra invoice as entered";
   }

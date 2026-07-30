@@ -159,34 +159,19 @@ def compute(month: str) -> dict:
     other_actual = max(0.0, total_expense_cur + total_marketplace_cur + total_adj - named_all)
 
     # Denominator includes all run+project spend (named workloads + Other).
-    # Marketplace adjustments already reduce each workload's net_actual so adjusted
-    # marketplace is naturally excluded; unadjusted marketplace is naturally included.
+    # Denominator for proportional allocation (ADA excluded)
     run_proj_total = named_run_proj + other_actual
-
-    # total_cur = shared + run + project + other
-    total_cur = shared_pool + run_proj_total
+    total_cur      = shared_pool + run_proj_total
 
     telstra_invoice  = float((mi["telstra_invoice"]  if mi else None) or 0)
     forecast_run     = (mi["forecast_run"]     if mi else None)
     forecast_project = (mi["forecast_project"] if mi else None)
 
-    # Marketplace adjustments (negative = paid via separate PO, not through Telstra)
-    # must reduce the effective invoice by the same amount they reduce total_cur,
-    # otherwise telstra_diff is inflated by the full adjustment and spreads that
-    # phantom cost across every workload.
-    # effective_invoice = invoice + total_adj  (negative adj → reduces invoice)
-    # telstra_diff = effective_invoice - total_cur
-    #              = (invoice + total_adj) - (original_cur + total_adj)
-    #              = invoice - original_cur   ← clean, adjustment-neutral
-    effective_invoice  = (telstra_invoice + total_adj) if telstra_invoice else 0.0
-    telstra_diff_total = (effective_invoice - total_cur) if telstra_invoice else 0.0
-
-    def allocs(actual: float):
-        """(shared_alloc, telstra_diff) proportional to run_proj_total."""
+    def shared_for(actual: float) -> float:
+        """Shared pool allocation proportional to run_proj_total (excl. ADA)."""
         if run_proj_total == 0:
-            return 0.0, 0.0
-        ratio = actual / run_proj_total
-        return shared_pool * ratio, telstra_diff_total * ratio
+            return 0.0
+        return shared_pool * (actual / run_proj_total)
 
     # ── Shared Cost rows ──────────────────────────────────────────────────────
     shared_rows = []
@@ -211,7 +196,7 @@ def compute(month: str) -> dict:
             "deviation":              (actual - budget) if budget else None,
         })
 
-    # ── Run Cost + Project rows ───────────────────────────────────────────────
+    # ── Pass 1: Run Cost + Project rows with shared_alloc; telstra_diff=0 placeholder ──
     consumption_rows = []
     project_rows     = []
 
@@ -221,8 +206,7 @@ def compute(month: str) -> dict:
         adj, adj_note = adj_map.get(w["name"], (0.0, ""))
         actual = expense + marketplace + adj
         is_ada = (w["domain"] or "").upper() == _ADA_DOMAIN
-        shared_alloc, td = (0.0, 0.0) if is_ada else allocs(actual)
-        total  = actual + shared_alloc + td
+        shared_alloc = 0.0 if is_ada else shared_for(actual)
         budget = float(w["budget_monthly"] or 0)
         target.append({
             "workload":               w["name"],
@@ -237,17 +221,16 @@ def compute(month: str) -> dict:
             "marketplace_adj_note":   adj_note,
             "actual":                 actual,
             "shared_alloc":           shared_alloc,
-            "telstra_diff":           td,
-            "total":                  total,
-            "deviation":              (total - budget) if budget else None,
+            "telstra_diff":           0.0,
+            "total":                  actual + shared_alloc,
+            "_is_ada":                is_ada,
+            "deviation":              None,
         })
 
-    # Other row: named "Other" category workloads + truly unmatched CUR tags — one combined row
-    named_other_actual = sum(net_actual(w["name"]) for w in other_cat_wl)
+    # Other row (pass 1)
+    named_other_actual    = sum(net_actual(w["name"]) for w in other_cat_wl)
     combined_other_actual = named_other_actual + other_actual
-    combined_other_shared, combined_other_td = allocs(combined_other_actual)
-
-    # Breakdown: named "Other" workloads sorted by spend, then unmatched tags
+    combined_other_shared = shared_for(combined_other_actual)
     named_other_breakdown = sorted(
         [{"tag": w["name"], "amount": net_actual(w["name"])} for w in other_cat_wl if net_actual(w["name"]) != 0],
         key=lambda x: x["amount"], reverse=True
@@ -256,8 +239,6 @@ def compute(month: str) -> dict:
         [{"tag": t, "amount": a} for t, a in unmatched_tags.items()],
         key=lambda x: x["amount"], reverse=True
     )
-    combined_breakdown = named_other_breakdown + unmatched_breakdown
-
     consumption_rows.append({
         "workload":               "Other",
         "domain":                 "ALL",
@@ -271,25 +252,56 @@ def compute(month: str) -> dict:
         "marketplace_adj_note":   "",
         "actual":                 combined_other_actual,
         "shared_alloc":           combined_other_shared,
-        "telstra_diff":           combined_other_td,
-        "total":                  combined_other_actual + combined_other_shared + combined_other_td,
+        "telstra_diff":           0.0,
+        "total":                  combined_other_actual + combined_other_shared,
+        "_is_ada":                False,
         "deviation":              None,
-        "unmatched_breakdown":    combined_breakdown,
+        "unmatched_breakdown":    named_other_breakdown + unmatched_breakdown,
     })
 
+    # ── Pass 2: compute Telstra diff and distribute to non-ADA rows ──────────
+    # New formula: telstra_diff = invoice − (run+proj actual+shared + marketplace_pos_adj)
+    # This means Marketplace via PO is treated as part of the "accounted for" spend,
+    # so only the true reconciliation gap flows through as Telstra diff.
+    total_run_proj_actual_shared = (
+        sum(r["actual"] + r["shared_alloc"] for r in consumption_rows) +
+        sum(r["actual"] + r["shared_alloc"] for r in project_rows)
+    )
+    telstra_diff_total = (
+        telstra_invoice - total_run_proj_actual_shared - total_marketplace_pos_adj
+    ) if telstra_invoice else 0.0
+    effective_invoice = telstra_invoice  # kept for API compatibility
+
+    def telstra_for(actual: float) -> float:
+        if run_proj_total == 0:
+            return 0.0
+        return telstra_diff_total * (actual / run_proj_total)
+
+    for r in consumption_rows + project_rows:
+        if r.pop("_is_ada", False):
+            continue  # ADA: telstra_diff stays 0
+        td = telstra_for(r["actual"])
+        r["telstra_diff"] = td
+        r["total"]        = r["actual"] + r["shared_alloc"] + td
+        if r["budget_monthly"]:
+            r["deviation"] = r["total"] - r["budget_monthly"]
+
     # ── Totals ────────────────────────────────────────────────────────────────
-    total_shared_actual           = sum(r["actual"]       for r in shared_rows)
-    total_consumption_actual      = sum(r["actual"]       for r in consumption_rows)
-    total_project_actual          = sum(r["actual"]       for r in project_rows)
-    total_consumption_shared_alloc= sum(r["shared_alloc"] for r in consumption_rows)
-    total_project_shared_alloc    = sum(r["shared_alloc"] for r in project_rows)
-    total_consumption_telstra_diff= sum(r["telstra_diff"] for r in consumption_rows)
-    total_project_telstra_diff    = sum(r["telstra_diff"] for r in project_rows)
-    total_consumption_finops      = sum(r["total"]        for r in consumption_rows)
-    total_project_finops          = sum(r["total"]        for r in project_rows)
-    total_consumption_budget      = sum(r["budget_monthly"] for r in consumption_rows if r["budget_monthly"])
-    total_project_budget          = sum(r["budget_monthly"] for r in project_rows     if r["budget_monthly"])
-    grand_total                   = total_consumption_finops + total_project_finops
+    total_shared_actual            = sum(r["actual"]       for r in shared_rows)
+    total_consumption_actual       = sum(r["actual"]       for r in consumption_rows)
+    total_project_actual           = sum(r["actual"]       for r in project_rows)
+    total_consumption_shared_alloc = sum(r["shared_alloc"] for r in consumption_rows)
+    total_project_shared_alloc     = sum(r["shared_alloc"] for r in project_rows)
+    total_consumption_telstra_diff = sum(r["telstra_diff"] for r in consumption_rows)
+    total_project_telstra_diff     = sum(r["telstra_diff"] for r in project_rows)
+    total_consumption_finops       = sum(r["total"]        for r in consumption_rows)
+    total_project_finops           = sum(r["total"]        for r in project_rows)
+    total_consumption_budget       = sum(r["budget_monthly"] for r in consumption_rows if r["budget_monthly"])
+    total_project_budget           = sum(r["budget_monthly"] for r in project_rows     if r["budget_monthly"])
+    # actual+shared subtotals (without Telstra diff) — used for KPI card second line
+    total_consumption_wo_td        = total_consumption_actual + total_consumption_shared_alloc
+    total_project_wo_td            = total_project_actual     + total_project_shared_alloc
+    grand_total                    = total_consumption_finops + total_project_finops
 
     return {
         "month":                    month,
@@ -312,10 +324,12 @@ def compute(month: str) -> dict:
         "total_project_shared_alloc":     total_project_shared_alloc,
         "total_consumption_telstra_diff": total_consumption_telstra_diff,
         "total_project_telstra_diff":     total_project_telstra_diff,
-        "total_consumption_finops": total_consumption_finops,
-        "total_project_finops":     total_project_finops,
-        "total_consumption_budget": total_consumption_budget,
-        "total_project_budget":     total_project_budget,
+        "total_consumption_wo_td":   total_consumption_wo_td,
+        "total_project_wo_td":       total_project_wo_td,
+        "total_consumption_finops":  total_consumption_finops,
+        "total_project_finops":      total_project_finops,
+        "total_consumption_budget":  total_consumption_budget,
+        "total_project_budget":      total_project_budget,
         "grand_total":              grand_total,
         "deviation_run":            (total_consumption_finops - forecast_run)          if forecast_run          else None,
         "deviation_project":        (total_project_finops     - forecast_project)      if forecast_project      else None,
