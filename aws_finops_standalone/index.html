@@ -1699,20 +1699,37 @@ function renderProjectBurnRate() {
   const { displayFY, fyStartYear, fyData, actualMonths, remainingMos, fyComplete } = getFYContext();
 
   // Build per-project monthly actuals from summaryData
-  const projectMap = {}; // name → { actuals: [], budget_monthly: N }
+  const projectMap = {}; // name → { actuals: [], budget_monthly: N, domain: S }
   fyData.forEach(mData => {
     if (!mData.project_workloads) return;
     mData.project_workloads.forEach(pw => {
-      if (!projectMap[pw.name]) projectMap[pw.name] = { actuals: [], budget_monthly: pw.budget_monthly || 0 };
+      if (!projectMap[pw.name]) projectMap[pw.name] = { actuals: [], budget_monthly: pw.budget_monthly || 0, domain: pw.domain || "" };
       if (pw.actual != null) projectMap[pw.name].actuals.push({ month: mData.month, actual: pw.actual });
     });
   });
 
   if (!Object.keys(projectMap).length && !actualMonths.length) { el.style.display = "none"; return; }
 
-  // Split into: has annual budget vs run-rate only (ADA / no-budget projects)
-  const withBudget    = Object.entries(projectMap).filter(([, v]) => v.budget_monthly > 0).sort((a,b) => b[1].budget_monthly - a[1].budget_monthly);
-  const withoutBudget = Object.entries(projectMap).filter(([, v]) => v.budget_monthly <= 0);
+  // ADA group: combine Clark AI + DataInsights + Sonar + Model Gateway into one row
+  const ADA_MEMBERS = new Set(["Clark AI", "DataInsights", "Sonar", "Model Gateway"]);
+  const adaCombined = { actuals: [], budget_monthly: 0, domain: "ADA", members: [] };
+  const monthlyAdaMap = {}; // month → combined actual
+  Object.entries(projectMap).forEach(([name, data]) => {
+    if (data.domain === "ADA" || ADA_MEMBERS.has(name)) {
+      adaCombined.members.push(name);
+      data.actuals.forEach(a => {
+        monthlyAdaMap[a.month] = (monthlyAdaMap[a.month] || 0) + a.actual;
+      });
+    }
+  });
+  adaCombined.actuals = Object.entries(monthlyAdaMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([month,actual])=>({month,actual}));
+
+  // Non-ADA individual projects
+  const individualProjects = Object.entries(projectMap).filter(([name, data]) => data.domain !== "ADA" && !ADA_MEMBERS.has(name));
+
+  // Split into: has annual budget vs run-rate only
+  const withBudget    = individualProjects.filter(([, v]) => v.budget_monthly > 0).sort((a,b) => b[1].budget_monthly - a[1].budget_monthly);
+  const withoutBudget = individualProjects.filter(([, v]) => v.budget_monthly <= 0);
 
   function projectRow(name, { actuals, budget_monthly }) {
     const annualBudget  = budget_monthly > 0 ? budget_monthly * 12 : 0;
@@ -1800,6 +1817,45 @@ function renderProjectBurnRate() {
     }
   }
 
+  // ADA combined row label
+  const adaMembersFound = adaCombined.members.length > 0;
+  const adaRow = adaMembersFound ? (() => {
+    const ytd       = adaCombined.actuals.reduce((s,a)=>s+a.actual,0);
+    const last3a    = adaCombined.actuals.slice(-3);
+    const avgMo     = last3a.length ? last3a.reduce((s,a)=>s+a.actual,0)/last3a.length : 0;
+    const projected = ytd + avgMo * remainingMos;
+    const latestMo  = adaCombined.actuals.length ? adaCombined.actuals[adaCombined.actuals.length-1].actual : null;
+    const monthLabel= adaCombined.actuals.length ? (() => { const d=new Date(adaCombined.actuals[adaCombined.actuals.length-1].month+"T00:00:00"); return d.toLocaleDateString("en-AU",{month:"short",year:"2-digit"}); })() : "—";
+    const membersList = adaCombined.members.join(", ");
+    return `
+      <div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+          <strong style="font-size:.9rem;color:var(--navy)">ADA Projects</strong>
+          <span style="font-size:.72rem;color:var(--muted)">${membersList}</span>
+          <span style="font-size:.75rem;color:var(--muted);margin-left:auto">No annual forecast — actual spend only (excl. shared alloc &amp; Telstra diff)</span>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${ytd ? fmt(ytd) : "—"}</div>
+            <div style="font-size:.68rem;color:var(--muted)">Spent YTD</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${latestMo != null ? fmt(latestMo) : "—"}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${monthLabel} actual</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${avgMo ? fmt(avgMo) : "—"}</div>
+            <div style="font-size:.68rem;color:var(--muted)">Avg/month${last3a.length < 3 ? ` (${last3a.length} mo)` : " (last 3)"}</div>
+          </div>
+          ${!fyComplete && remainingMos > 0 ? `
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${fmt(projected)}</div>
+            <div style="font-size:.68rem;color:var(--muted)">Projected FY total</div>
+          </div>` : ""}
+        </div>
+      </div>`;
+  })() : "";
+
   el.innerHTML = `
   <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 20px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
@@ -1807,8 +1863,9 @@ function renderProjectBurnRate() {
       <span style="font-size:.76rem;color:var(--muted);margin-left:auto">FY${displayFY} · Jul ${fyStartYear} – Jun ${displayFY}</span>
     </div>
     ${withBudget.map(([name, data]) => projectRow(name, data)).join("")}
+    ${adaRow}
     ${withoutBudget.length ? `
-    <div style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:10px 0 6px">Run Rate Only</div>
+    <div style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:10px 0 6px">Other Projects — Run Rate Only</div>
     ${withoutBudget.map(([name, data]) => projectRow(name, data)).join("")}` : ""}
   </div>`;
   el.style.display = "block";

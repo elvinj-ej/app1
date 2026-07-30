@@ -161,6 +161,15 @@ def init_db():
         conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='MES'", (560000 / 12,))
         conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='CNA'", (960000 / 12,))
 
+        # ADA group: Clark AI, DataInsights, Sonar, Model Gateway — no annual forecast, run-rate only
+        _ADA_PROJECTS = ("Clark AI", "DataInsights", "Sonar", "Model Gateway")
+        conn.execute(
+            "UPDATE workloads SET domain='ADA', budget_monthly=0 WHERE name IN ({})".format(
+                ",".join("?" * len(_ADA_PROJECTS))
+            ),
+            _ADA_PROJECTS,
+        )
+
         # Schema migrations for existing databases
         existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
         if "domain" not in existing_cols:
