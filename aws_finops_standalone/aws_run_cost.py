@@ -2,17 +2,19 @@
 Three-tier cost model:
 
   Shared Cost accounts (AWS Networks, Billing, Network F5, Network Firewall):
-    - Their actual spend is pooled and distributed to Run + Project accounts.
+    - Their actual spend is pooled and distributed to Run + non-ADA Project accounts.
     - They do NOT receive a Telstra Diff allocation themselves.
 
-  Run Cost accounts (Consumption):
+  Run Cost accounts (Consumption) and non-ADA Project X-charge (CNA, MES):
     - actual          = own CUR spend (monthly_expense + marketplace + adjustment)
     - shared_alloc    = SharedPool × (own_actual / run_project_total)
     - telstra_diff    = TelstraDiffTotal × (own_actual / run_project_total)
     - finops_total    = actual + shared_alloc + telstra_diff
     - deviation       = finops_total − budget
 
-  Project X-charge: same formula as Run Cost.
+  ADA Project workloads (Clark AI, DataInsights, Sonar, Model Gateway):
+    - actual only — no shared cost allocation, no Telstra diff applied.
+    - finops_total    = actual
 
   Grand Total (sum of all Run+Project finops_total) = Telstra Invoice.
 """
@@ -136,11 +138,16 @@ def compute(month: str) -> dict:
     project_wl   = [w for w in workloads if w["cost_category"] == "Project"]
     other_cat_wl = [w for w in workloads if w["cost_category"] == "Other"]
 
+    # ADA workloads are excluded from the shared pool / Telstra diff distribution
+    _ADA_DOMAIN = "ADA"
+    ada_wl       = [w for w in project_wl if (w["domain"] or "").upper() == _ADA_DOMAIN]
+    non_ada_proj = [w for w in project_wl if (w["domain"] or "").upper() != _ADA_DOMAIN]
+
     # Shared pool = sum of all Shared account actuals
     shared_pool = sum(net_actual(w["name"]) for w in shared_wl)
 
-    # Named run+project actual total (includes "Other" category — they share the same pool)
-    named_run_proj = sum(net_actual(w["name"]) for w in run_wl + project_wl + other_cat_wl)
+    # Denominator: Run + non-ADA Project + Other only (ADA excluded)
+    named_run_proj = sum(net_actual(w["name"]) for w in run_wl + non_ada_proj + other_cat_wl)
 
     # Unmatched CUR spend → goes into Run Cost "Other" row
     total_expense_cur     = sum(tag_expense.values())
@@ -213,7 +220,8 @@ def compute(month: str) -> dict:
         marketplace = workload_marketplace.get(w["name"], 0.0)
         adj, adj_note = adj_map.get(w["name"], (0.0, ""))
         actual = expense + marketplace + adj
-        shared_alloc, td = allocs(actual)
+        is_ada = (w["domain"] or "").upper() == _ADA_DOMAIN
+        shared_alloc, td = (0.0, 0.0) if is_ada else allocs(actual)
         total  = actual + shared_alloc + td
         budget = float(w["budget_monthly"] or 0)
         target.append({
