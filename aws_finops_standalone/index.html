@@ -88,7 +88,7 @@ a{color:var(--yellow)}
 .tbl-wrap{overflow-x:auto;margin-bottom:8px}
 table{width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;
       border:1px solid var(--border);border-radius:8px;overflow:hidden}
-table.detail-tbl{table-layout:fixed}
+table.detail-tbl{table-layout:fixed;width:100%;min-width:880px}
 table.detail-tbl td,table.detail-tbl th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 thead.hd-shared tr{background:var(--col-shared);color:#fff}
 thead.hd-run    tr{background:var(--col-run);color:#fff}
@@ -847,17 +847,17 @@ async function loadRunCost(month) {
     : "";
 
   document.getElementById("runcost-wrap").innerHTML = `
-    <div class="section-label"><span class="dot dot-shared"></span>Shared Cost Accounts</div>
-    <div class="tbl-wrap"><table class="detail-tbl">${sharedHead}<tbody>${sRows}</tbody></table></div>
-
-    <div class="section-label" style="margin-top:20px"><span class="dot dot-run"></span>Run Cost — Consumption</div>
-    <div class="tbl-wrap"><table class="detail-tbl">${rpHead("hd-run")}<tbody>${rRows}</tbody></table></div>
-
-    <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>Project X-charge</div>
-    <div class="tbl-wrap"><table class="detail-tbl">${rpHead("hd-project")}<tbody>${pRows}</tbody></table></div>
-
-    <div class="section-label" style="margin-top:20px"><span class="dot" style="background:var(--col-run)"></span>Grand Total Summary</div>
     <div class="tbl-wrap">
+      <div class="section-label"><span class="dot dot-shared"></span>Shared Cost Accounts</div>
+      <table class="detail-tbl">${sharedHead}<tbody>${sRows}</tbody></table>
+
+      <div class="section-label" style="margin-top:20px"><span class="dot dot-run"></span>Run Cost — Consumption</div>
+      <table class="detail-tbl">${rpHead("hd-run")}<tbody>${rRows}</tbody></table>
+
+      <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>Project X-charge</div>
+      <table class="detail-tbl">${rpHead("hd-project")}<tbody>${pRows}</tbody></table>
+
+      <div class="section-label" style="margin-top:20px"><span class="dot" style="background:var(--col-run)"></span>Grand Total Summary</div>
       <table class="detail-tbl">${grandHead}<tbody>${grandRows}</tbody></table>
     </div>
     ${noTelstraNote}`;
