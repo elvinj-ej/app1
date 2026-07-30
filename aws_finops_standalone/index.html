@@ -1710,7 +1710,7 @@ function renderProjectBurnRate() {
     if (!mData.project_workloads) return;
     mData.project_workloads.forEach(pw => {
       if (!projectMap[pw.name]) projectMap[pw.name] = { actuals: [], budget_monthly: pw.budget_monthly || 0, domain: pw.domain || "" };
-      if (pw.actual != null) projectMap[pw.name].actuals.push({ month: mData.month, actual: pw.actual });
+      if (pw.actual != null) projectMap[pw.name].actuals.push({ month: mData.month, actual: pw.actual, shared_alloc: pw.shared_alloc || 0, telstra_diff: pw.telstra_diff || 0 });
     });
   });
 
@@ -1741,11 +1741,13 @@ function renderProjectBurnRate() {
 
   function projectRow(name, { actuals, budget_monthly }) {
     const annualBudget  = budget_monthly > 0 ? budget_monthly * 12 : 0;
-    const ytd           = actuals.reduce((s, a) => s + a.actual, 0);
+    // CNA/MES use FinOps total (actual + shared alloc + Telstra diff), same as Run workloads
+    const finopsActuals = actuals.map(a => ({ ...a, finops: a.actual + (a.shared_alloc || 0) + (a.telstra_diff || 0) }));
+    const ytd           = finopsActuals.reduce((s, a) => s + a.finops, 0);
     const pct           = annualBudget > 0 ? (ytd / annualBudget * 100) : null;
     const remaining     = annualBudget > 0 ? annualBudget - ytd : null;
-    const last3a        = actuals.slice(-3);
-    const avgMo         = last3a.length ? last3a.reduce((s,a)=>s+a.actual,0)/last3a.length : 0;
+    const last3a        = finopsActuals.slice(-3);
+    const avgMo         = last3a.length ? last3a.reduce((s,a)=>s+a.finops,0)/last3a.length : 0;
     const projected     = ytd + avgMo * remainingMos;
     const projVsBudget  = annualBudget > 0 ? projected - annualBudget : null;
     const isOnTrack     = pct == null || (projVsBudget == null || projVsBudget <= 0);
@@ -1758,7 +1760,7 @@ function renderProjectBurnRate() {
     const calcNote = `<div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px dashed #e0e0e0">
       Annual forecast = ${fmt(budget_monthly)}/mo × 12 months = ${fmt(annualBudget)}.
       Projected = Spent YTD + avg of last ${last3a.length < 3 ? last3a.length : 3} actual month${last3a.length !== 1 ? "s" : ""} (${avgMo ? fmt(avgMo) : "—"}/mo) × ${remainingMos} remaining months.
-      Spent YTD = actual CUR spend only (excludes shared cost allocation &amp; Telstra invoice diff).
+      Spent YTD = actual CUR spend + shared cost allocation + Telstra invoice diff.
     </div>`;
 
     if (annualBudget > 0) {
