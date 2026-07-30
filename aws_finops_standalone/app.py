@@ -627,6 +627,60 @@ def api_cur_tags():
     return jsonify({"tags": [r["workloads_tag"] for r in rows]})
 
 
+# ── API: accounts for a workload ──────────────────────────────────────────────
+
+@app.route("/AWSFinOps/api/workloads/<name>/accounts", methods=["GET"])
+@login_required
+def api_workload_accounts(name):
+    with get_conn() as conn:
+        # Resolve effective CUR tag (cur_tag override or workload name)
+        wl = conn.execute("SELECT cur_tag FROM workloads WHERE name=?", (name,)).fetchone()
+        tag = (wl["cur_tag"] or name).strip() if wl else name
+        rows = conn.execute(
+            "SELECT DISTINCT account_id, account_name FROM cur_data "
+            "WHERE workloads_tag=? OR LOWER(workloads_tag)=LOWER(?) "
+            "ORDER BY account_name",
+            (tag, tag),
+        ).fetchall()
+    return jsonify({"accounts": [{"account_id": r["account_id"], "account_name": r["account_name"]} for r in rows]})
+
+
+# ── API: accounts for a raw CUR tag (used for unassigned tags) ────────────────
+
+@app.route("/AWSFinOps/api/cur-tags/<tag>/accounts", methods=["GET"])
+@login_required
+def api_cur_tag_accounts(tag):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT account_id, account_name FROM cur_data "
+            "WHERE workloads_tag=? OR LOWER(workloads_tag)=LOWER(?) "
+            "ORDER BY account_name",
+            (tag, tag),
+        ).fetchall()
+    return jsonify({"accounts": [{"account_id": r["account_id"], "account_name": r["account_name"]} for r in rows]})
+
+
+# ── API: unassigned CUR tags (in CUR but not matched to any workload) ──────────
+
+@app.route("/AWSFinOps/api/cur-tags/unassigned", methods=["GET"])
+@login_required
+def api_unassigned_tags():
+    with get_conn() as conn:
+        # All distinct non-blank CUR tags
+        all_tags = {r["workloads_tag"] for r in conn.execute(
+            "SELECT DISTINCT workloads_tag FROM cur_data WHERE workloads_tag != ''"
+        ).fetchall()}
+        # All workload names + cur_tag overrides
+        workloads = conn.execute("SELECT name, cur_tag FROM workloads").fetchall()
+    matched = set()
+    for w in workloads:
+        matched.add(w["name"].lower())
+        if w["cur_tag"]:
+            matched.add(w["cur_tag"].lower())
+    unassigned = sorted(t for t in all_tags if t.lower() not in matched)
+    return jsonify({"tags": unassigned})
+
+
 # ── API: auto-create workloads from CUR tags ──────────────────────────────────
 
 @app.route("/AWSFinOps/api/workloads/discover", methods=["POST"])

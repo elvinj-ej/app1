@@ -424,6 +424,7 @@ input[type=file]{display:none}
           <option value="Shared">Shared Cost</option>
           <option value="Consumption">Run Cost (Consumption)</option>
           <option value="Project">Project X-charge</option>
+          <option value="Other">Other (grouped)</option>
         </select>
       </div>
     </div>
@@ -443,6 +444,17 @@ input[type=file]{display:none}
     <div class="modal-footer">
       <button class="btn btn-outline" id="modal-cancel">Cancel</button>
       <button class="btn" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- AWS Accounts Modal -->
+<div class="modal-bg" id="accounts-modal">
+  <div class="modal" style="max-width:560px">
+    <h3 id="accounts-modal-title">AWS Accounts</h3>
+    <div id="accounts-modal-body" style="max-height:400px;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('accounts-modal').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
@@ -783,15 +795,45 @@ async function loadRunCost(month) {
       d.deviation_proj_vs_budget != null ? (d.deviation_proj_vs_budget > 0 ? "+" : "") + fmt(d.deviation_proj_vs_budget) : "—"}</td>
   </tr>`;
 
-  // ── Grand total row ───────────────────────────────────────────────────────
-  const grandRow = `<tr class="row-grand">
-    <td colspan="4">GRAND TOTAL</td>
-    <td class="num">—</td>
-    <td class="num">${fmt(d.total_consumption_actual + d.total_project_actual)}</td>
-    <td class="num">${fmt(d.shared_pool)}</td>
-    ${hasTelstra ? `<td class="num">${fmt(d.telstra_diff_total)}</td><td class="num">${fmt(d.grand_total)}</td>` : ""}
-    <td class="num">—</td>
-  </tr>`;
+  // ── Grand total table — simplified (no Domain / Budget Manager) ──────────
+  const grandHead = `<thead class="hd-run"><tr>
+    <th style="min-width:180px">Category</th>
+    <th class="num">Total Budget/mo</th>
+    <th class="num">${mLabel} Actuals</th>
+    <th class="num">Total Shared Alloc</th>
+    ${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}
+    <th class="num">Dev vs Budget</th>
+  </tr></thead>`;
+
+  const devFmt = (val) => val != null
+    ? `<span class="${val > 0 ? "dev-pos" : "dev-neg"}">${val > 0 ? "+" : ""}${fmt(val)}</span>`
+    : "—";
+
+  const grandRows = `
+    <tr>
+      <td><strong>Run Cost</strong></td>
+      <td class="num">${fmt(d.total_consumption_budget)}</td>
+      <td class="num">${fmt(d.total_consumption_actual)}</td>
+      <td class="num">${fmt(d.total_consumption_shared_alloc)}</td>
+      ${hasTelstra ? `<td class="num">${fmt(d.total_consumption_telstra_diff)}</td><td class="num"><strong>${fmt(d.total_consumption_finops)}</strong></td>` : ""}
+      <td class="num">${devFmt(d.deviation_run_vs_budget)}</td>
+    </tr>
+    <tr>
+      <td><strong>Project X-charge</strong></td>
+      <td class="num">${fmt(d.total_project_budget)}</td>
+      <td class="num">${fmt(d.total_project_actual)}</td>
+      <td class="num">${fmt(d.total_project_shared_alloc)}</td>
+      ${hasTelstra ? `<td class="num">${fmt(d.total_project_telstra_diff)}</td><td class="num"><strong>${fmt(d.total_project_finops)}</strong></td>` : ""}
+      <td class="num">${devFmt(d.deviation_proj_vs_budget)}</td>
+    </tr>
+    <tr class="row-grand">
+      <td><strong>GRAND TOTAL</strong></td>
+      <td class="num">—</td>
+      <td class="num"><strong>${fmt(d.total_consumption_actual + d.total_project_actual)}</strong></td>
+      <td class="num"><strong>${fmt(d.shared_pool)}</strong></td>
+      ${hasTelstra ? `<td class="num"><strong>${fmt(d.telstra_diff_total)}</strong></td><td class="num"><strong>${fmt(d.grand_total)}</strong></td>` : ""}
+      <td class="num">—</td>
+    </tr>`;
 
   const noTelstraNote = !hasTelstra
     ? '<p style="font-size:.78rem;color:var(--muted);margin-top:8px">Enter the Telstra Invoice above to see Shared Alloc, Telstra Diff and FinOps Total columns.</p>'
@@ -807,8 +849,9 @@ async function loadRunCost(month) {
     <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>Project X-charge</div>
     <div class="tbl-wrap"><table>${rpHead("hd-project")}<tbody>${pRows}</tbody></table></div>
 
-    <div class="tbl-wrap" style="margin-top:12px">
-      <table>${rpHead("hd-run")}<tbody>${grandRow}</tbody></table>
+    <div class="section-label" style="margin-top:20px"><span class="dot" style="background:var(--col-run)"></span>Grand Total Summary</div>
+    <div class="tbl-wrap">
+      <table>${grandHead}<tbody>${grandRows}</tbody></table>
     </div>
     ${noTelstraNote}`;
 }
@@ -860,51 +903,143 @@ async function loadHistory() {
 
 // ── Workloads ─────────────────────────────────────────────────────────────────
 async function loadWorkloads() {
-  const d = await fetch(API + "/workloads").then(r => r.json());
-  const wls = d.workloads || [];
+  const [wlData, unassignedData] = await Promise.all([
+    fetch(API + "/workloads").then(r => r.json()),
+    fetch(API + "/cur-tags/unassigned").then(r => r.json()).catch(() => ({ tags: [] })),
+  ]);
+  const wls         = wlData.workloads || [];
+  const unassigned  = unassignedData.tags || [];
   const shared      = wls.filter(w => w.cost_category === "Shared");
   const consumption = wls.filter(w => w.cost_category === "Consumption");
   const project     = wls.filter(w => w.cost_category === "Project");
   const other       = wls.filter(w => w.cost_category === "Other");
 
-  const catBadge = c => ({
-    "Shared":      `<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700">Shared</span>`,
-    "Consumption": `<span style="background:#EEF2F7;color:#2B3752;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700">Run Cost</span>`,
-    "Project":     `<span style="background:#F3E5F5;color:#6A1B9A;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700">Project</span>`,
-    "Other":       `<span style="background:#FFF3E0;color:#E65100;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700">Other</span>`,
-  }[c] || c);
+  const COLS = 9; // Workload, Domain, Budget Mgr, Budget/mo, Description, CUR Tag, Accounts, Actions
+
+  function wlHead(bg) {
+    return `<thead><tr style="background:${bg};color:#fff">
+      <th>Workload</th><th>Domain</th><th>Budget Manager</th>
+      <th class="num">Budget/mo</th><th>Description</th><th>CUR Tag</th>
+      <th>Account Details</th><th></th>
+    </tr></thead>`;
+  }
 
   const makeRows = list => list.map(w => `<tr>
     <td><strong>${w.name}</strong></td>
     <td>${w.domain||"—"}</td>
-    <td>${catBadge(w.cost_category)}</td>
     <td>${w.budget_manager||"—"}</td>
     <td class="num">${w.budget_monthly ? fmt(w.budget_monthly) : "—"}</td>
     <td style="font-size:.78rem;color:var(--muted)">${w.description||""}</td>
-    <td style="font-size:.75rem;color:var(--muted);font-family:monospace">${w.cur_tag ? `<span title="CUR tag override" style="background:#FFF8E1;color:#7B4F00;padding:1px 5px;border-radius:3px">${w.cur_tag}</span>` : ""}</td>
+    <td style="font-size:.75rem;font-family:monospace">${w.cur_tag ? `<span title="CUR tag override" style="background:#FFF8E1;color:#7B4F00;padding:1px 5px;border-radius:3px">${w.cur_tag}</span>` : ""}</td>
+    <td><button class="btn btn-outline btn-sm" onclick='showAccounts(${JSON.stringify(w.name)})'>AWS Accounts</button></td>
     <td style="white-space:nowrap">
       <button class="btn btn-outline btn-sm" onclick='openEdit(${JSON.stringify(w)})'>Edit</button>
       <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick='delWL(${JSON.stringify(w.name)})'>Del</button>
     </td></tr>`).join("");
 
-  document.getElementById("wl-wrap").innerHTML = `
+  function makeTable(label, color, list) {
+    const countBadge = `<span style="background:rgba(0,0,0,.12);padding:1px 7px;border-radius:10px;font-size:.75rem;margin-left:8px">${list.length}</span>`;
+    return `
+    <div class="section-label" style="margin-top:20px;color:${color}">
+      <span class="dot" style="background:${color}"></span>${label}${countBadge}
+    </div>
+    <div class="tbl-wrap"><table>${wlHead(color)}<tbody>${makeRows(list)}</tbody></table></div>`;
+  }
+
+  // Unassigned CUR tags (in CUR data but not matched to any workload)
+  let unassignedSection = "";
+  if (unassigned.length > 0) {
+    const uRows = unassigned.map(tag => `<tr>
+      <td><strong>${tag}</strong></td>
+      <td colspan="5" style="color:var(--muted);font-size:.82rem">Not matched to any workload — assign a category to track it</td>
+      <td><button class="btn btn-outline btn-sm" onclick='showAccountsByTag(${JSON.stringify(tag)})'>AWS Accounts</button></td>
+      <td><button class="btn btn-sm" onclick='openAddForTag(${JSON.stringify(tag)})'>+ Assign</button></td>
+    </tr>`).join("");
+    unassignedSection = `
+    <div class="section-label" style="margin-top:20px;color:#B71C1C">
+      <span class="dot" style="background:#B71C1C"></span>Unassigned CUR Tags
+      <span style="background:rgba(183,28,28,.15);color:#B71C1C;padding:1px 7px;border-radius:10px;font-size:.75rem;margin-left:8px">${unassigned.length}</span>
+      <span style="font-size:.78rem;font-weight:400;color:var(--muted);margin-left:12px">These tags appear in your CUR data but are not matched to any workload</span>
+    </div>
     <div class="tbl-wrap"><table>
-      <thead><tr style="background:var(--col-shared);color:#fff">
-        <th>Workload</th><th>Domain</th><th>Category</th><th>Budget Manager</th>
-        <th class="num">Budget/mo</th><th>Description</th><th>CUR Tag</th><th></th>
+      <thead><tr style="background:#B71C1C;color:#fff">
+        <th>CUR Tag</th><th colspan="5">Status</th><th>Account Details</th><th>Action</th>
       </tr></thead>
-      <tbody>
-        <tr class="section-hdr" style="color:var(--col-shared)"><td colspan="8">Shared Cost Accounts</td></tr>
-        ${makeRows(shared)}
-        <tr class="section-hdr" style="color:var(--col-run)"><td colspan="8">Run Cost — Consumption</td></tr>
-        ${makeRows(consumption)}
-        <tr class="section-hdr" style="color:var(--col-project)"><td colspan="8">Project X-charge</td></tr>
-        ${makeRows(project)}
-        <tr class="section-hdr" style="color:#E65100"><td colspan="8">Other — Grouped under Run Cost "Other" row</td></tr>
-        ${makeRows(other)}
-      </tbody>
+      <tbody>${uRows}</tbody>
     </table></div>`;
+  }
+
+  document.getElementById("wl-wrap").innerHTML =
+    makeTable("Shared Cost Accounts",        "var(--col-shared)",  shared)      +
+    makeTable("Run Cost — Consumption",       "var(--col-run)",     consumption) +
+    makeTable("Project X-charge",            "var(--col-project)", project)     +
+    makeTable('Other — grouped under Run Cost "Other" row', "#E65100", other)   +
+    unassignedSection;
 }
+
+async function showAccounts(workloadName) {
+  const modal = document.getElementById("accounts-modal");
+  const title = document.getElementById("accounts-modal-title");
+  const body  = document.getElementById("accounts-modal-body");
+  title.textContent = `AWS Accounts — ${workloadName}`;
+  body.innerHTML = '<p style="color:var(--muted);padding:12px">Loading…</p>';
+  modal.classList.add("open");
+  const d = await fetch(`${API}/workloads/${encodeURIComponent(workloadName)}/accounts`).then(r => r.json());
+  const accounts = d.accounts || [];
+  if (!accounts.length) {
+    body.innerHTML = '<p style="color:var(--muted);padding:12px">No account data found for this workload in the uploaded CUR files.</p>';
+    return;
+  }
+  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+    <thead><tr style="background:var(--navy);color:#fff">
+      <th style="padding:8px 12px;text-align:left">Account ID</th>
+      <th style="padding:8px 12px;text-align:left">Account Name</th>
+    </tr></thead>
+    <tbody>${accounts.map((a,i) => `<tr style="background:${i%2?"#f9f9f9":"#fff"}">
+      <td style="padding:7px 12px;font-family:monospace">${a.account_id}</td>
+      <td style="padding:7px 12px">${a.account_name||"—"}</td>
+    </tr>`).join("")}</tbody>
+  </table>`;
+}
+
+async function showAccountsByTag(tag) {
+  // For unassigned tags — fetch directly via cur-tags endpoint workaround
+  // Reuse accounts modal, call workload endpoint with the tag as a synthetic workload
+  const modal = document.getElementById("accounts-modal");
+  const title = document.getElementById("accounts-modal-title");
+  const body  = document.getElementById("accounts-modal-body");
+  title.textContent = `AWS Accounts — CUR tag: ${tag}`;
+  body.innerHTML = '<p style="color:var(--muted);padding:12px">Loading…</p>';
+  modal.classList.add("open");
+  const d = await fetch(`${API}/cur-tags/${encodeURIComponent(tag)}/accounts`).then(r => r.json());
+  const accounts = d.accounts || [];
+  if (!accounts.length) {
+    body.innerHTML = `<p style="color:var(--muted);padding:12px">No account data found for tag "${tag}".</p>`;
+    return;
+  }
+  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+    <thead><tr style="background:#B71C1C;color:#fff">
+      <th style="padding:8px 12px;text-align:left">Account ID</th>
+      <th style="padding:8px 12px;text-align:left">Account Name</th>
+    </tr></thead>
+    <tbody>${accounts.map((a,i) => `<tr style="background:${i%2?"#f9f9f9":"#fff"}">
+      <td style="padding:7px 12px;font-family:monospace">${a.account_id}</td>
+      <td style="padding:7px 12px">${a.account_name||"—"}</td>
+    </tr>`).join("")}</tbody>
+  </table>`;
+}
+
+function openAddForTag(tag) {
+  editName = null;
+  document.getElementById("modal-title").textContent = "Assign Workload";
+  clearModal();
+  document.getElementById("wl-name").value = tag;
+  document.getElementById("wl-modal").classList.add("open");
+}
+
+document.getElementById("accounts-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("accounts-modal")) document.getElementById("accounts-modal").classList.remove("open");
+});
 
 async function delWL(name) {
   if (!confirm(`Delete workload "${name}"? Its spend will roll into Other.`)) return;
