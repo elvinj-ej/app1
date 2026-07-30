@@ -301,7 +301,7 @@ def compute(month: str) -> dict:
     # actual+shared subtotals (without Telstra diff) — used for KPI card second line
     total_consumption_wo_td        = total_consumption_actual + total_consumption_shared_alloc
     total_project_wo_td            = total_project_actual     + total_project_shared_alloc
-    grand_total                    = total_consumption_finops + total_project_finops
+    grand_total                    = total_consumption_wo_td + total_project_wo_td + total_marketplace_pos_adj
 
     return {
         "month":                    month,
