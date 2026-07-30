@@ -161,14 +161,12 @@ def init_db():
         conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='MES'", (560000 / 12,))
         conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='CNA'", (960000 / 12,))
 
-        # ADA group: Clark AI, DataInsights, Sonar, Model Gateway — no annual forecast, run-rate only
-        _ADA_PROJECTS = ("Clark AI", "DataInsights", "Sonar", "Model Gateway")
-        conn.execute(
-            "UPDATE workloads SET domain='ADA', budget_monthly=0 WHERE name IN ({})".format(
-                ",".join("?" * len(_ADA_PROJECTS))
-            ),
-            _ADA_PROJECTS,
-        )
+        # ADA group: domain tag + individual FY27 monthly budgets
+        # Total ADA: Clark AI $3k + DataInsights $3.4k + Sonar $9.7k + Model Gateway $0 = $16.1k/mo = $193,200/yr
+        conn.execute("UPDATE workloads SET domain='ADA', budget_monthly=3000   WHERE name='Clark AI'")
+        conn.execute("UPDATE workloads SET domain='ADA', budget_monthly=3400   WHERE name='DataInsights'")
+        conn.execute("UPDATE workloads SET domain='ADA', budget_monthly=9700   WHERE name='Sonar'")
+        conn.execute("UPDATE workloads SET domain='ADA', budget_monthly=0      WHERE name='Model Gateway'")
 
         # Schema migrations for existing databases
         existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}

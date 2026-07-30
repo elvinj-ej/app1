@@ -1688,6 +1688,12 @@ function renderRunBurnRate() {
       ${burnRateBar(pct, annualBudget)}
       ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget, fyComplete })}
     </div>
+    <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+      <strong>How forecast is calculated:</strong>
+      Annual forecast = sum of monthly <em>forecast_run</em> inputs entered for all 12 FY months (entered via the Inputs bar on the Detailed tab).
+      Spent YTD = sum of Run Cost FinOps totals (actual + shared cost allocation + Telstra invoice diff) for months with data.
+      Projected FY total = Spent YTD + average of last 3 actual months × remaining months in the FY.
+    </div>
   </div>`;
   el.style.display = "block";
 }
@@ -1712,11 +1718,13 @@ function renderProjectBurnRate() {
 
   // ADA group: combine Clark AI + DataInsights + Sonar + Model Gateway into one row
   const ADA_MEMBERS = new Set(["Clark AI", "DataInsights", "Sonar", "Model Gateway"]);
-  const adaCombined = { actuals: [], budget_monthly: 0, domain: "ADA", members: [] };
+  const adaCombined = { actuals: [], budget_monthly: 0, domain: "ADA", members: [], memberBudgets: {} };
   const monthlyAdaMap = {}; // month → combined actual
   Object.entries(projectMap).forEach(([name, data]) => {
     if (data.domain === "ADA" || ADA_MEMBERS.has(name)) {
       adaCombined.members.push(name);
+      adaCombined.budget_monthly += (data.budget_monthly || 0);
+      adaCombined.memberBudgets[name] = data.budget_monthly || 0;
       data.actuals.forEach(a => {
         monthlyAdaMap[a.month] = (monthlyAdaMap[a.month] || 0) + a.actual;
       });
@@ -1817,44 +1825,76 @@ function renderProjectBurnRate() {
     }
   }
 
-  // ADA combined row label
+  // ADA combined row — now has an annual budget ($193,200 = sum of member monthly budgets × 12)
   const adaMembersFound = adaCombined.members.length > 0;
   const adaRow = adaMembersFound ? (() => {
-    const ytd       = adaCombined.actuals.reduce((s,a)=>s+a.actual,0);
-    const last3a    = adaCombined.actuals.slice(-3);
-    const avgMo     = last3a.length ? last3a.reduce((s,a)=>s+a.actual,0)/last3a.length : 0;
-    const projected = ytd + avgMo * remainingMos;
-    const latestMo  = adaCombined.actuals.length ? adaCombined.actuals[adaCombined.actuals.length-1].actual : null;
-    const monthLabel= adaCombined.actuals.length ? (() => { const d=new Date(adaCombined.actuals[adaCombined.actuals.length-1].month+"T00:00:00"); return d.toLocaleDateString("en-AU",{month:"short",year:"2-digit"}); })() : "—";
-    const membersList = adaCombined.members.join(", ");
+    const annualBudget  = adaCombined.budget_monthly * 12;
+    const ytd           = adaCombined.actuals.reduce((s,a)=>s+a.actual,0);
+    const pct           = annualBudget > 0 ? (ytd / annualBudget * 100) : null;
+    const remaining     = annualBudget > 0 ? annualBudget - ytd : null;
+    const last3a        = adaCombined.actuals.slice(-3);
+    const avgMo         = last3a.length ? last3a.reduce((s,a)=>s+a.actual,0)/last3a.length : 0;
+    const projected     = ytd + avgMo * remainingMos;
+    const projVsBudget  = annualBudget > 0 ? projected - annualBudget : null;
+    const isOnTrack     = pct == null || (projVsBudget == null || projVsBudget <= 0);
+    const statusCol     = isOnTrack ? "#2E7D32" : "#C0392B";
+    const barColor      = pct == null ? "#ccc" : pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
+    const barPct        = Math.min(pct || 0, 100);
+    // Member breakdown string e.g. "Clark AI $3k/mo · DataInsights $3.4k/mo · Sonar $9.7k/mo · Model Gateway (no budget)"
+    const memberBreakdown = adaCombined.members.map(m => {
+      const b = adaCombined.memberBudgets[m] || 0;
+      return b > 0 ? `${m} ${fmt(b)}/mo` : `${m} (no budget)`;
+    }).join(" · ");
+
     return `
       <div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
           <strong style="font-size:.9rem;color:var(--navy)">ADA Projects</strong>
-          <span style="font-size:.72rem;color:var(--muted)">${membersList}</span>
-          <span style="font-size:.75rem;color:var(--muted);margin-left:auto">No annual forecast — actual spend only (excl. shared alloc &amp; Telstra diff)</span>
+          ${annualBudget > 0 ? `<span style="font-size:.78rem;font-weight:700;color:${statusCol}">${isOnTrack ? "✓ On track" : "⚠ Watch"}</span>` : ""}
+          <span style="font-size:.75rem;color:var(--muted);margin-left:auto">Annual forecast ${annualBudget ? fmt(annualBudget) : "—"}</span>
         </div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">${memberBreakdown}</div>
+        <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px">Actual spend only — excludes shared cost allocation &amp; Telstra diff. Marketplace via PO already adjusted out.</div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
-          <div style="text-align:center">
-            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${ytd ? fmt(ytd) : "—"}</div>
-            <div style="font-size:.68rem;color:var(--muted)">Spent YTD</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${latestMo != null ? fmt(latestMo) : "—"}</div>
-            <div style="font-size:.68rem;color:var(--muted)">${monthLabel} actual</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${avgMo ? fmt(avgMo) : "—"}</div>
-            <div style="font-size:.68rem;color:var(--muted)">Avg/month${last3a.length < 3 ? ` (${last3a.length} mo)` : " (last 3)"}</div>
-          </div>
-          ${!fyComplete && remainingMos > 0 ? `
-          <div style="text-align:center">
-            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${fmt(projected)}</div>
-            <div style="font-size:.68rem;color:var(--muted)">Projected FY total</div>
+          ${annualBudget > 0 ? `
+          <div style="flex:1;min-width:160px">
+            <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-bottom:3px">
+              <span>Used</span><span style="color:${barColor};font-weight:700">${pct != null ? pct.toFixed(1)+"%" : "—"}</span>
+            </div>
+            <div style="background:#eee;border-radius:3px;height:6px;overflow:hidden">
+              <div style="background:${barColor};width:${barPct}%;height:100%;border-radius:3px"></div>
+            </div>
           </div>` : ""}
+          <div style="display:flex;gap:20px;flex-wrap:wrap">
+            <div style="text-align:center">
+              <div style="font-size:1rem;font-weight:700;color:var(--navy)">${ytd ? fmt(ytd) : "—"}</div>
+              <div style="font-size:.68rem;color:var(--muted)">Spent YTD</div>
+            </div>
+            ${annualBudget > 0 && remaining != null ? `<div style="text-align:center">
+              <div style="font-size:1rem;font-weight:700;color:${remaining < 0 ? "#C0392B" : "var(--navy)"}">${fmt(Math.abs(remaining))}</div>
+              <div style="font-size:.68rem;color:var(--muted)">${remaining < 0 ? "Over" : "Remaining"}</div>
+            </div>` : ""}
+            ${!fyComplete && remainingMos > 0 ? `
+            <div style="text-align:center">
+              <div style="font-size:1rem;font-weight:700;color:${annualBudget > 0 && projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${fmt(projected)}</div>
+              <div style="font-size:.68rem;color:var(--muted)">Projected</div>
+            </div>
+            ${annualBudget > 0 && projVsBudget != null ? `<div style="text-align:center">
+              <div style="font-size:.9rem;font-weight:700;color:${projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${(projVsBudget > 0?"+":"") + fmt(projVsBudget)}</div>
+              <div style="font-size:.68rem;color:var(--muted)">vs forecast</div>
+            </div>` : ""}` : ""}
+          </div>
         </div>
       </div>`;
   })() : "";
+
+  const projCalcNote = `<div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+    <strong>How forecasts are calculated:</strong>
+    MES &amp; CNA — Annual forecast = budget/month × 12 months.
+    ADA Projects — Annual forecast = sum of individual monthly budgets × 12 (Clark AI $3k + DataInsights $3.4k + Sonar $9.7k = $16.1k/mo × 12 = $193,200).
+    Projected FY total = Spent YTD + average of last 3 actual months × remaining months.
+    ADA actual spend excludes shared cost allocation and Telstra invoice diff.
+  </div>`;
 
   el.innerHTML = `
   <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 20px">
@@ -1867,6 +1907,7 @@ function renderProjectBurnRate() {
     ${withoutBudget.length ? `
     <div style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:10px 0 6px">Other Projects — Run Rate Only</div>
     ${withoutBudget.map(([name, data]) => projectRow(name, data)).join("")}` : ""}
+    ${projCalcNote}
   </div>`;
   el.style.display = "block";
 }
