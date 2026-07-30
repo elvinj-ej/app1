@@ -345,8 +345,9 @@ input[type=file]{display:none}
       <div class="kpi-sub">Average monthly Run Cost finops total over selected period</div>
     </div>
   </div>
-  <!-- FY on-track banner -->
-  <div id="fy-tracker" style="display:none;margin-bottom:16px"></div>
+  <!-- Burn rate banners -->
+  <div id="run-burn-rate"     style="display:none;margin-bottom:10px"></div>
+  <div id="project-burn-rate" style="display:none;margin-bottom:16px"></div>
   <!-- Charts stacked vertically -->
   <div style="display:flex;flex-direction:column;gap:16px">
     <div class="chart-card">
@@ -1587,108 +1588,229 @@ function posBarTip(e) {
 }
 
 
-function renderFYTracker(months) {
-  const el = document.getElementById("fy-tracker");
-  if (!el) return;
-
-  // Determine which FY is selected (or current if none)
+// ── Shared helper: determine FY months and actual months from summaryData ───────
+function getFYContext() {
   const today = new Date();
-  const currentFY = today.getMonth() >= 6 ? today.getFullYear() + 1 : today.getFullYear();
-  const displayFY = sumSelFY || currentFY;
-
-  // All 12 months of the FY (Jul–Jun)
+  const currentFY   = today.getMonth() >= 6 ? today.getFullYear() + 1 : today.getFullYear();
+  const displayFY   = sumSelFY || currentFY;
   const fyStartYear = displayFY - 1;
-  const fyMonths = [];
+  const fyMonths    = [];
   for (let mo = 6; mo <= 11; mo++) fyMonths.push(`${fyStartYear}-${String(mo+1).padStart(2,"0")}-01`);
-  for (let mo = 0; mo <= 5; mo++)  fyMonths.push(`${displayFY}-${String(mo+1).padStart(2,"0")}-01`);
+  for (let mo = 0; mo <= 5;  mo++) fyMonths.push(`${displayFY}-${String(mo+1).padStart(2,"0")}-01`);
+  const fyData        = fyMonths.map(m => summaryData.find(d => d.month === m) || { month: m });
+  const actualMonths  = fyData.filter(m => m.run_finops != null || m.project_finops != null);
+  const remainingMos  = fyData.filter(m => m.run_finops == null && m.project_finops == null).length;
+  const fyEnd         = new Date(`${displayFY}-06-30`);
+  const fyComplete    = today > fyEnd;
+  return { displayFY, fyStartYear, fyData, actualMonths, remainingMos, fyComplete };
+}
 
-  // Match to summaryData
-  const fyData = fyMonths.map(m => summaryData.find(d => d.month === m) || { month: m });
+function burnRateBar(pct, budget) {
+  const barColor = pct == null ? "#ccc" : pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
+  const barPct   = Math.min(pct || 0, 100);
+  return `
+    <div style="flex:1;min-width:200px">
+      <div style="display:flex;justify-content:space-between;font-size:.76rem;color:var(--muted);margin-bottom:4px">
+        <span>Budget used</span>
+        <span style="font-weight:700;color:${barColor}">${pct != null ? pct.toFixed(1)+"%" : "—"}</span>
+      </div>
+      <div style="background:#eee;border-radius:4px;height:8px;overflow:hidden">
+        <div style="background:${barColor};width:${barPct}%;height:100%;border-radius:4px;transition:width .4s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-top:3px">
+        <span>$0</span><span>${budget ? fmt(budget) : "—"} annual forecast</span>
+      </div>
+    </div>`;
+}
 
-  // Budget: sum of forecasts for all 12 months
-  const fyBudget = fyData.reduce((s, m) => s + (m.forecast_run || 0) + (m.forecast_project || 0), 0);
+function burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget, fyComplete }) {
+  const needsProjection = !fyComplete && remainingMos > 0;
+  return `
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+      <div style="text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--navy)">${spent ? fmt(spent) : "—"}</div>
+        <div style="font-size:.72rem;color:var(--muted)">Spent YTD</div>
+      </div>
+      ${annualBudget ? `<div style="text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:${remaining < 0 ? "#C0392B" : "var(--navy)"}">${fmt(Math.abs(remaining))}</div>
+        <div style="font-size:.72rem;color:var(--muted)">${remaining < 0 ? "Over budget" : "Remaining"}</div>
+      </div>` : ""}
+      ${needsProjection ? `
+      <div style="text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--navy)">${remainingMos}</div>
+        <div style="font-size:.72rem;color:var(--muted)">Months left</div>
+      </div>` : ""}
+      ${needsProjection && projected ? `
+      <div style="text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:${projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${fmt(projected)}</div>
+        <div style="font-size:.72rem;color:var(--muted)">Projected total</div>
+      </div>
+      ${annualBudget && projVsBudget != null ? `<div style="text-align:center">
+        <div style="font-size:1rem;font-weight:700;color:${projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${(projVsBudget > 0 ? "+" : "") + fmt(projVsBudget)}</div>
+        <div style="font-size:.72rem;color:var(--muted)">vs forecast</div>
+      </div>` : ""}` : ""}
+    </div>`;
+}
 
-  // Actual: months with data
-  const actualMonths = fyData.filter(m => m.run_finops != null || m.project_finops != null);
-  const fySpent      = actualMonths.reduce((s, m) => s + (m.run_finops || 0) + (m.project_finops || 0), 0);
+// ── Box 1: Burn Rate — Run Workloads ─────────────────────────────────────────
+function renderRunBurnRate() {
+  const el = document.getElementById("run-burn-rate");
+  if (!el) return;
+  const { displayFY, fyStartYear, fyData, actualMonths, remainingMos, fyComplete } = getFYContext();
 
-  // Is the FY complete? (last month Jun = index 5 of current year has passed)
-  const fyEnd = new Date(`${displayFY}-06-30`);
-  const fyComplete = today > fyEnd;
+  const annualBudget = fyData.reduce((s, m) => s + (m.forecast_run || 0), 0);
+  const spent        = actualMonths.reduce((s, m) => s + (m.run_finops || 0), 0);
 
-  // Months remaining (FY months in the future that have no actual data)
-  const remainingMonths = fyData.filter(m => m.run_finops == null && m.project_finops == null).length;
+  if (!annualBudget && !spent) { el.style.display = "none"; return; }
 
-  const pct        = fyBudget > 0 ? (fySpent / fyBudget * 100) : null;
-  const remaining  = fyBudget > 0 ? fyBudget - fySpent : null;
+  const pct          = annualBudget > 0 ? (spent / annualBudget * 100) : null;
+  const remaining    = annualBudget - spent;
+  const last3        = actualMonths.slice(-3);
+  const avgMonthly   = last3.length ? last3.reduce((s,m) => s + (m.run_finops||0), 0) / last3.length : 0;
+  const projected    = spent + avgMonthly * remainingMos;
+  const projVsBudget = annualBudget > 0 ? projected - annualBudget : null;
 
-  // Run rate projection: avg of last 3 actual months × remaining months
-  const last3 = actualMonths.slice(-3);
-  const avgMonthly = last3.length
-    ? last3.reduce((s, m) => s + (m.run_finops || 0) + (m.project_finops || 0), 0) / last3.length
-    : 0;
-  const projected  = fySpent + avgMonthly * remainingMonths;
-  const projVsBudget = fyBudget > 0 ? projected - fyBudget : null;
+  const isOnTrack = pct != null && (projVsBudget == null || projVsBudget <= 0);
+  const icon      = isOnTrack ? "✓" : "⚠";
+  const status    = fyComplete
+    ? (isOnTrack ? "Well done — finished within forecast" : "Finished over forecast")
+    : (isOnTrack ? "On track" : "Watch needed");
+  const headCol   = isOnTrack ? "#2E7D32" : "#C0392B";
 
-  if (!fyBudget && !fySpent) { el.style.display = "none"; return; }
-
-  const isOnTrack = pct != null && pct <= 100 && (projVsBudget == null || projVsBudget <= 0);
-  const heading   = fyComplete
-    ? (isOnTrack ? `✓ FY${displayFY}: Well done — finished within budget` : `⚠ FY${displayFY}: Finished over budget`)
-    : (isOnTrack ? `✓ FY${displayFY}: On track` : `⚠ FY${displayFY}: Watch needed`);
-  const headCol   = isOnTrack ? "var(--green,#2E7D32)" : "var(--red,#C0392B)";
-
-  const barPct    = Math.min(pct || 0, 100);
-  const barColor  = pct == null ? "#ccc" : pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
-
-  let html = `
+  el.innerHTML = `
   <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 20px">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-      <span style="font-size:.88rem;font-weight:700;color:${headCol}">${heading}</span>
-      <span style="font-size:.78rem;color:var(--muted);margin-left:auto">FY${displayFY} Jul ${fyStartYear} – Jun ${displayFY}</span>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)">Burn Rate — Run Workloads</span>
+      <span style="font-size:.88rem;font-weight:700;color:${headCol};margin-left:8px">${icon} FY${displayFY}: ${status}</span>
+      <span style="font-size:.76rem;color:var(--muted);margin-left:auto">Jul ${fyStartYear} – Jun ${displayFY} · Annual forecast ${annualBudget ? fmt(annualBudget) : "—"}</span>
     </div>
-    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start">
-      <!-- Progress bar + % -->
-      <div style="flex:1;min-width:220px">
-        <div style="display:flex;justify-content:space-between;font-size:.76rem;color:var(--muted);margin-bottom:4px">
-          <span>Budget used</span>
-          <span style="font-weight:700;color:${barColor}">${pct != null ? pct.toFixed(1)+"%" : "—"}</span>
-        </div>
-        <div style="background:#eee;border-radius:4px;height:8px;overflow:hidden">
-          <div style="background:${barColor};width:${barPct}%;height:100%;border-radius:4px;transition:width .4s"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-top:3px">
-          <span>$0</span><span>${fyBudget ? fmt(fyBudget) : "—"} budget</span>
-        </div>
-      </div>
-      <!-- Key numbers -->
-      <div style="display:flex;gap:24px;flex-wrap:wrap">
-        <div style="text-align:center">
-          <div style="font-size:1.1rem;font-weight:700;color:var(--navy)">${fySpent ? fmt(fySpent) : "—"}</div>
-          <div style="font-size:.72rem;color:var(--muted)">Spent YTD</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:1.1rem;font-weight:700;color:${remaining != null && remaining < 0 ? "#C0392B" : "var(--navy)"}">${remaining != null ? fmt(Math.abs(remaining)) : "—"}</div>
-          <div style="font-size:.72rem;color:var(--muted)">${remaining != null && remaining < 0 ? "Over budget" : "Remaining"}</div>
-        </div>
-        ${!fyComplete && remainingMonths > 0 ? `
-        <div style="text-align:center">
-          <div style="font-size:1.1rem;font-weight:700;color:var(--navy)">${remainingMonths}</div>
-          <div style="font-size:.72rem;color:var(--muted)">Months left</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:1.1rem;font-weight:700;color:${projVsBudget != null && projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${projected ? fmt(projected) : "—"}</div>
-          <div style="font-size:.72rem;color:var(--muted)">Projected FY total</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:1rem;font-weight:700;color:${projVsBudget != null && projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${projVsBudget != null ? (projVsBudget > 0 ? "+" : "") + fmt(projVsBudget) : "—"}</div>
-          <div style="font-size:.72rem;color:var(--muted)">vs budget</div>
-        </div>` : ""}
-      </div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+      ${burnRateBar(pct, annualBudget)}
+      ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget, fyComplete })}
     </div>
   </div>`;
+  el.style.display = "block";
+}
 
-  el.innerHTML = html;
+// ── Box 2: Burn Rate — Project Workloads ─────────────────────────────────────
+function renderProjectBurnRate() {
+  const el = document.getElementById("project-burn-rate");
+  if (!el) return;
+  const { displayFY, fyStartYear, fyData, actualMonths, remainingMos, fyComplete } = getFYContext();
+
+  // Build per-project monthly actuals from summaryData
+  const projectMap = {}; // name → { actuals: [], budget_monthly: N }
+  fyData.forEach(mData => {
+    if (!mData.project_workloads) return;
+    mData.project_workloads.forEach(pw => {
+      if (!projectMap[pw.name]) projectMap[pw.name] = { actuals: [], budget_monthly: pw.budget_monthly || 0 };
+      if (pw.actual != null) projectMap[pw.name].actuals.push({ month: mData.month, actual: pw.actual });
+    });
+  });
+
+  if (!Object.keys(projectMap).length && !actualMonths.length) { el.style.display = "none"; return; }
+
+  // Split into: has annual budget vs run-rate only (ADA / no-budget projects)
+  const withBudget    = Object.entries(projectMap).filter(([, v]) => v.budget_monthly > 0).sort((a,b) => b[1].budget_monthly - a[1].budget_monthly);
+  const withoutBudget = Object.entries(projectMap).filter(([, v]) => v.budget_monthly <= 0);
+
+  function projectRow(name, { actuals, budget_monthly }) {
+    const annualBudget  = budget_monthly > 0 ? budget_monthly * 12 : 0;
+    const ytd           = actuals.reduce((s, a) => s + a.actual, 0);
+    const pct           = annualBudget > 0 ? (ytd / annualBudget * 100) : null;
+    const remaining     = annualBudget > 0 ? annualBudget - ytd : null;
+    const last3a        = actuals.slice(-3);
+    const avgMo         = last3a.length ? last3a.reduce((s,a)=>s+a.actual,0)/last3a.length : 0;
+    const projected     = ytd + avgMo * remainingMos;
+    const projVsBudget  = annualBudget > 0 ? projected - annualBudget : null;
+    const isOnTrack     = pct == null || (projVsBudget == null || projVsBudget <= 0);
+    const statusCol     = isOnTrack ? "#2E7D32" : "#C0392B";
+    const barColor      = pct == null ? "#ccc" : pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
+    const barPct        = Math.min(pct || 0, 100);
+    const latestMo      = actuals.length ? actuals[actuals.length-1].actual : null;
+    const monthLabel    = actuals.length ? (() => { const d=new Date(actuals[actuals.length-1].month+"T00:00:00"); return d.toLocaleDateString("en-AU",{month:"short",year:"2-digit"}); })() : "—";
+
+    if (annualBudget > 0) {
+      // Projects with annual forecast — full burn rate row
+      return `
+      <div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+          <strong style="font-size:.9rem;color:var(--navy)">${name}</strong>
+          <span style="font-size:.78rem;font-weight:700;color:${statusCol}">${isOnTrack ? "✓ On track" : "⚠ Watch"}</span>
+          <span style="font-size:.75rem;color:var(--muted);margin-left:auto">Annual forecast ${fmt(annualBudget)}</span>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+          <div style="flex:1;min-width:160px">
+            <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-bottom:3px">
+              <span>Used</span><span style="color:${barColor};font-weight:700">${pct != null ? pct.toFixed(1)+"%" : "—"}</span>
+            </div>
+            <div style="background:#eee;border-radius:3px;height:6px;overflow:hidden">
+              <div style="background:${barColor};width:${barPct}%;height:100%;border-radius:3px"></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:20px;flex-wrap:wrap">
+            <div style="text-align:center">
+              <div style="font-size:1rem;font-weight:700;color:var(--navy)">${ytd ? fmt(ytd) : "—"}</div>
+              <div style="font-size:.68rem;color:var(--muted)">Spent YTD</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:1rem;font-weight:700;color:${remaining < 0 ? "#C0392B" : "var(--navy)"}">${remaining != null ? fmt(Math.abs(remaining)) : "—"}</div>
+              <div style="font-size:.68rem;color:var(--muted)">${remaining < 0 ? "Over" : "Remaining"}</div>
+            </div>
+            ${!fyComplete && remainingMos > 0 ? `
+            <div style="text-align:center">
+              <div style="font-size:1rem;font-weight:700;color:${projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${projected ? fmt(projected) : "—"}</div>
+              <div style="font-size:.68rem;color:var(--muted)">Projected</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:.9rem;font-weight:700;color:${projVsBudget > 0 ? "#C0392B" : "#2E7D32"}">${projVsBudget != null ? (projVsBudget > 0?"+":"") + fmt(projVsBudget) : "—"}</div>
+              <div style="font-size:.68rem;color:var(--muted)">vs forecast</div>
+            </div>` : ""}
+          </div>
+        </div>
+      </div>`;
+    } else {
+      // Projects without annual forecast — monthly run rate only (actual spend, no shared alloc / telstra diff)
+      return `
+      <div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+          <strong style="font-size:.9rem;color:var(--navy)">${name}</strong>
+          <span style="font-size:.75rem;color:var(--muted)">No annual forecast — actual spend only (excl. shared alloc &amp; Telstra diff)</span>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${ytd ? fmt(ytd) : "—"}</div>
+            <div style="font-size:.68rem;color:var(--muted)">Spent YTD</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${latestMo != null ? fmt(latestMo) : "—"}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${monthLabel} actual</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${avgMo ? fmt(avgMo) : "—"}</div>
+            <div style="font-size:.68rem;color:var(--muted)">Avg/month${last3a.length < 3 ? ` (${last3a.length} mo)` : " (last 3)"}</div>
+          </div>
+          ${!fyComplete && remainingMos > 0 ? `
+          <div style="text-align:center">
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)">${fmt(projected)}</div>
+            <div style="font-size:.68rem;color:var(--muted)">Projected FY total</div>
+          </div>` : ""}
+        </div>
+      </div>`;
+    }
+  }
+
+  el.innerHTML = `
+  <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 20px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <span style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)">Burn Rate — Project Workloads</span>
+      <span style="font-size:.76rem;color:var(--muted);margin-left:auto">FY${displayFY} · Jul ${fyStartYear} – Jun ${displayFY}</span>
+    </div>
+    ${withBudget.map(([name, data]) => projectRow(name, data)).join("")}
+    ${withoutBudget.length ? `
+    <div style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:10px 0 6px">Run Rate Only</div>
+    ${withoutBudget.map(([name, data]) => projectRow(name, data)).join("")}` : ""}
+  </div>`;
   el.style.display = "block";
 }
 
@@ -1707,7 +1829,8 @@ function updateSummaryKPIs(months) {
   document.getElementById("sum-kpi-telstra").textContent = count ? fmt(totalTelstra) : "—";
   document.getElementById("sum-kpi-months").textContent  = count || months.length;
   document.getElementById("sum-kpi-avg").textContent     = count ? fmt(totalRun / count) : "—";
-  renderFYTracker(months);
+  renderRunBurnRate();
+  renderProjectBurnRate();
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

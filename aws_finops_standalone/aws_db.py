@@ -157,6 +157,10 @@ def init_db():
         # Ensure DPX MCP and Olingo Odata remain Consumption
         conn.execute("UPDATE workloads SET cost_category='Consumption' WHERE name IN ('DPX MCP', 'Olingo Odata')")
 
+        # FY27 project annual budgets: MES $560k/yr, CNA $910k+$50k=$960k/yr
+        conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='MES'", (560000 / 12,))
+        conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='CNA'", (960000 / 12,))
+
         # Schema migrations for existing databases
         existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
         if "domain" not in existing_cols:

@@ -747,7 +747,7 @@ def api_summary():
                     "forecast_run":            fc.get("forecast_run"),
                     "forecast_project":        fc.get("forecast_project"),
                     "run_workloads":           [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["consumption_rows"] if r["workload"] != "Other"],
-                    "project_workloads":       [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["project_rows"]],
+                    "project_workloads":       [{"name": r["workload"], "actual": r["actual"], "budget_monthly": r["budget_monthly"]} for r in d["project_rows"]],
                 })
             except Exception as e:
                 log.warning(f"Summary compute error for {m}: {e}")
