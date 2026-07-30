@@ -1837,7 +1837,7 @@ function renderProjectBurnRate() {
   // ADA combined row — now has an annual budget ($193,200 = sum of member monthly budgets × 12)
   const adaMembersFound = adaCombined.members.length > 0;
   const adaRow = adaMembersFound ? (() => {
-    const annualBudget  = adaCombined.budget_monthly * 12;
+    const annualBudget  = 164000; // FY27 ADA forecast
     const ytd           = adaCombined.actuals.reduce((s,a)=>s+a.actual,0);
     const pct           = annualBudget > 0 ? (ytd / annualBudget * 100) : null;
     const remaining     = annualBudget > 0 ? annualBudget - ytd : null;
@@ -1865,7 +1865,7 @@ function renderProjectBurnRate() {
         <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">${memberBreakdown}</div>
         <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px">Actual spend only — excludes shared cost allocation &amp; Telstra diff. Marketplace via PO already adjusted out.</div>
         <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px;padding:6px 8px;background:var(--bg);border-radius:4px;border-left:2px solid var(--border)">
-          Annual forecast = Clark AI ${fmt(3000)}/mo + DataInsights ${fmt(3400)}/mo + Sonar ${fmt(9700)}/mo = ${fmt(16100)}/mo × 12 = ${fmt(193200)}.
+          Annual forecast = ${fmt(annualBudget)} (FY27 ADA budget).
           Projected = Spent YTD + avg of last ${last3a.length < 3 ? last3a.length : 3} actual month${last3a.length !== 1 ? "s" : ""} (${avgMo ? fmt(avgMo) : "—"}/mo) × ${remainingMos} remaining months.
         </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
