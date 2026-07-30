@@ -1758,7 +1758,7 @@ function renderProjectBurnRate() {
     const calcNote = `<div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px dashed #e0e0e0">
       Annual forecast = ${fmt(budget_monthly)}/mo × 12 months = ${fmt(annualBudget)}.
       Projected = Spent YTD + avg of last ${last3a.length < 3 ? last3a.length : 3} actual month${last3a.length !== 1 ? "s" : ""} (${avgMo ? fmt(avgMo) : "—"}/mo) × ${remainingMos} remaining months.
-      Spent YTD includes actual spend + shared cost allocation + Telstra invoice diff.
+      Spent YTD = actual CUR spend only (excludes shared cost allocation &amp; Telstra invoice diff).
     </div>`;
 
     if (annualBudget > 0) {
