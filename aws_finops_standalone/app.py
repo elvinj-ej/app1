@@ -1554,15 +1554,39 @@ def api_project_email(month, workload_key):
             ada_wl_rows = [r for r in computed[month]["project_rows"]
                            if r["domain"] == "ADA" or r["workload"] in _ADA_WORKLOADS]
             if ada_wl_rows:
+                # Build per-workload PO lookup from the fetched adjustments
+                _ada_adj_by_wl = {}
+                for _a in adjs:
+                    _ada_adj_by_wl.setdefault(_a["workload"], []).append(_a)
+
                 def _ada_row(r):
-                    mkt = r.get("actual_marketplace", 0)
-                    mkt_str = fmtd(mkt) if mkt else "—"
+                    wl_name  = r["workload"]
+                    mkt_raw  = r.get("actual_marketplace", 0)
+                    wl_adjs  = _ada_adj_by_wl.get(wl_name, [])
+                    if wl_adjs:
+                        # PO-adjusted marketplace: expense = actual (PO is billed separately)
+                        po_parts = []
+                        for _aj in wl_adjs:
+                            _po  = (_aj.get("po_number") or "").strip()
+                            _amt = abs(float(_aj["adjustment"]))
+                            po_parts.append(fmtd(_amt) + (" (PO: " + _po + ")" if _po else " (PO)"))
+                        po_note_str = "; ".join(po_parts)
+                        expense_str = fmtd(r["actual"])
+                        mkt_cell    = (
+                            '<span style="font-size:10px;color:#888888;font-style:italic;font-family:Arial,Helvetica,sans-serif">'
+                            + po_note_str + ' &mdash; charged via separate PO</span>'
+                        )
+                        total_str   = fmtd(r["actual"])
+                    else:
+                        expense_str = fmtd(r["actual"] - mkt_raw) if mkt_raw else fmtd(r["actual"])
+                        mkt_cell    = fmtd(mkt_raw) if mkt_raw else "&#8212;"
+                        total_str   = fmtd(r["actual"])
                     return (
                         '<tr>'
-                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3">' + r["workload"] + '</td>'
-                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">' + fmtd(r["actual"] - mkt) + '</td>'
-                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">' + mkt_str + '</td>'
-                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">' + fmtd(r["actual"]) + '</td>'
+                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;font-family:Arial,Helvetica,sans-serif">' + wl_name + '</td>'
+                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-family:Arial,Helvetica,sans-serif">' + expense_str + '</td>'
+                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-family:Arial,Helvetica,sans-serif">' + mkt_cell + '</td>'
+                        '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:bold;font-family:Arial,Helvetica,sans-serif">' + total_str + '</td>'
                         '</tr>'
                     )
                 rows_html = "".join(_ada_row(r) for r in ada_wl_rows)
@@ -1622,7 +1646,8 @@ def api_project_email(month, workload_key):
             '</td></tr></table></td></tr>'
         )
         cur_actual_str    = fmtd(cur["actual"])
-        cur_mkt_str       = fmtd(cur["marketplace"])
+        cur_mkt_non_po    = max(0.0, cur["marketplace"] - mkt_adj_total)
+        cur_mkt_str       = fmtd(cur_mkt_non_po)
         dev_str           = fmts(deviation)
         mkt_adj_total_str = fmtd(mkt_adj_total)
 
@@ -1663,9 +1688,9 @@ def api_project_email(month, workload_key):
           </td>
           <td width="8"></td>
           <td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%">
-            <p style="margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif">Marketplace (non-adjusted)</p>
+            <p style="margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif">Marketplace consumption (non-PO)</p>
             <p style="margin:0 0 3px 0;font-size:22px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif">""" + cur_mkt_str + """</p>
-            <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">CUR marketplace charges</p>
+            <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">CUR marketplace excl. PO purchases</p>
           </td>
           <td width="8"></td>
           <td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%">
