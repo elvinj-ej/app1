@@ -59,9 +59,9 @@ _SEED_WORKLOADS = [
     ("Model Gateway",     "",                       "Project",           "",                         "",                                                              0),
     ("CNA",               "Corporate Supply Chain", "Project",           "Leigh Wells",              "",                                                              28013.40),
     ("MES",               "Corporate Supply Chain", "Project",           "Rushka Plunkett",          "",                                                              26000.00),
-    ("Clark AI",          "ADA",                    "Project",           "Jennifer Ilaya",           "AWG implementations consideration",                             round(244_000 / 12 * 3000 / 16100, 2)),
-    ("DataInsights",      "ADA",                    "Project",           "Jennifer Ilaya",           "AWG implementations consideration",                             round(244_000 / 12 * 3400 / 16100, 2)),
-    ("Sonar",             "ADA",                    "Project",           "Jennifer Ilaya",           "",                                                              round(244_000 / 12 * 9700 / 16100, 2)),
+    ("Clark AI",          "ADA",                    "Project",           "Jennifer Ilaya",           "AWG implementations consideration",                             0),
+    ("DataInsights",      "ADA",                    "Project",           "Jennifer Ilaya",           "AWG implementations consideration",                             0),
+    ("Sonar",             "ADA",                    "Project",           "Jennifer Ilaya",           "",                                                              0),
 ]
 
 
@@ -199,18 +199,13 @@ def init_db():
         conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='MES'", (560000 / 12,))
         conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='CNA'", (960000 / 12,))
 
-        # ADA group: domain tag + individual FY27 monthly budgets
-        # FY27 annual forecast = USD 244,000 → $20,333.33/mo total
-        # Distributed proportionally: Clark 3000 : DataInsights 3400 : Sonar 9700 (total 16,100)
-        _ADA_MONTHLY_TOTAL = 244_000 / 12          # 20,333.33/mo
-        _ADA_ORIG_TOTAL    = 3000 + 3400 + 9700    # 16,100
-        conn.execute("UPDATE workloads SET domain='ADA', budget_manager='Jennifer Ilaya', budget_monthly=? WHERE name='Clark AI'",
-                     (round(_ADA_MONTHLY_TOTAL * 3000 / _ADA_ORIG_TOTAL, 2),))
-        conn.execute("UPDATE workloads SET domain='ADA', budget_manager='Jennifer Ilaya', budget_monthly=? WHERE name='DataInsights'",
-                     (round(_ADA_MONTHLY_TOTAL * 3400 / _ADA_ORIG_TOTAL, 2),))
-        conn.execute("UPDATE workloads SET domain='ADA', budget_manager='Jennifer Ilaya', budget_monthly=? WHERE name='Sonar'",
-                     (round(_ADA_MONTHLY_TOTAL * 9700 / _ADA_ORIG_TOTAL, 2),))
-        conn.execute("UPDATE workloads SET domain='ADA', budget_manager='Jennifer Ilaya', budget_monthly=0 WHERE name='Model Gateway'")
+        # ADA group: shared annual budget of USD 244,000 ($20,333/mo total).
+        # No individual workload budgets — tracked as a group against the total.
+        for _ada_name in ("Clark AI", "DataInsights", "Sonar", "Model Gateway"):
+            conn.execute(
+                "UPDATE workloads SET domain='ADA', budget_manager='Jennifer Ilaya', budget_monthly=0 WHERE name=?",
+                (_ada_name,),
+            )
 
         # Schema migrations for existing databases
         existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
