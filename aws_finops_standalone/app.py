@@ -806,31 +806,45 @@ def api_receiving_forecast_save(month):
 @app.route("/AWSFinOps/api/receiving/forecast-estimate/<month>", methods=["GET"])
 @login_required
 def api_receiving_forecast_estimate(month):
-    """Auto-calculate received forecast from CUR monthly_expense data with mid-month extrapolation."""
+    """
+    Auto-calculate received forecast from CUR data for the Receiving page.
+
+    Formula:
+        base = monthly_expense (all workloads) + marketplace CUR − marketplace adjustments paid via PO
+             = monthly_expense + unadjusted marketplace
+    Unadjusted marketplace = CUR marketplace total − abs(negative adjustments for this month).
+    Negative adjustments represent marketplace purchases paid via separate PO (excluded from Telstra scope).
+    Marketplace with no adjustment flows through to Telstra invoice and must be included.
+
+    If the CUR was uploaded mid-month, extrapolate to month-end using daily run rate.
+    """
     with get_conn() as conn:
-        cur_total = conn.execute(
+        expense_total = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) FROM cur_data WHERE month=? AND category='monthly_expense'",
             (month,),
         ).fetchone()[0]
-        # Get the most recent upload that included data for this month
-        upload_row = conn.execute(
-            "SELECT ul.uploaded_at FROM upload_log ul "
-            "WHERE EXISTS (SELECT 1 FROM cur_data cd WHERE cd.month=? AND cd.rowid <= ("
-            "SELECT MAX(cd2.rowid) FROM cur_data cd2 WHERE cd2.month=? "
-            "AND cd2.id <= (SELECT COALESCE(MAX(id),0) FROM cur_data WHERE month=? "
-            "AND id <= COALESCE((SELECT MIN(id) FROM cur_data WHERE rowid > "
-            "(SELECT MAX(rowid) FROM cur_data WHERE month <= ? AND id <= "
-            "(SELECT COALESCE(MAX(id),0) FROM cur_data))),-1)))) "
-            "ORDER BY ul.id DESC LIMIT 1",
-            (month, month, month, month),
-        ).fetchone()
-        # Simpler: just get the latest upload_log entry
+
+        marketplace_total = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM cur_data WHERE month=? AND category='marketplace'",
+            (month,),
+        ).fetchone()[0]
+
+        # Negative adjustments = marketplace paid via separate PO (removed from Telstra scope)
+        adj_removed = conn.execute(
+            "SELECT COALESCE(SUM(adjustment), 0) FROM marketplace_adjustments WHERE month=? AND adjustment < 0",
+            (month,),
+        ).fetchone()[0]
+
         upload_row = conn.execute(
             "SELECT uploaded_at FROM upload_log ORDER BY id DESC LIMIT 1"
         ).fetchone()
 
-    if cur_total == 0:
-        return jsonify({"estimate": None, "cur_total": 0, "note": "No CUR data for this month."})
+    # unadjusted marketplace = CUR marketplace - what was removed via PO adjustment
+    unadjusted_mkt = max(0.0, float(marketplace_total) + float(adj_removed))  # adj_removed is negative
+    base_total = float(expense_total) + unadjusted_mkt
+
+    if base_total == 0:
+        return jsonify({"estimate": None, "note": "No CUR data for this month."})
 
     upload_dt = None
     if upload_row and upload_row[0]:
@@ -850,29 +864,39 @@ def api_receiving_forecast_estimate(month):
 
     days_in_month = calendar.monthrange(year, mon)[1]
 
+    mkt_note = ""
+    if unadjusted_mkt > 0:
+        mkt_note = f" + ${unadjusted_mkt:,.2f} unadjusted marketplace"
+    elif float(marketplace_total) > 0:
+        mkt_note = f" (marketplace ${float(marketplace_total):,.2f} fully adjusted via PO — excluded)"
+
     if upload_dt and upload_dt.year == year and upload_dt.month == mon:
-        # Mid-month upload — extrapolate
         days_elapsed = upload_dt.day
         if days_elapsed < days_in_month:
-            estimate = round(cur_total * days_in_month / days_elapsed, 2)
-            note = (f"CUR data covers {days_elapsed} of {days_in_month} days "
-                    f"(uploaded {upload_dt.strftime('%d %b')}). "
-                    f"Extrapolated: ${cur_total:,.2f} × {days_in_month}/{days_elapsed} = ${estimate:,.2f}")
+            estimate = round(base_total * days_in_month / days_elapsed, 2)
+            note = (f"CUR uploaded {upload_dt.strftime('%-d %b')} ({days_elapsed}/{days_in_month} days). "
+                    f"Base: ${base_total:,.2f} (expense${mkt_note}) × {days_in_month}/{days_elapsed} "
+                    f"= ${estimate:,.2f}")
             return jsonify({
                 "estimate": estimate,
-                "cur_total": round(cur_total, 2),
+                "expense_total": round(float(expense_total), 2),
+                "marketplace_total": round(float(marketplace_total), 2),
+                "unadjusted_mkt": round(unadjusted_mkt, 2),
+                "base_total": round(base_total, 2),
                 "days_elapsed": days_elapsed,
                 "total_days": days_in_month,
                 "is_extrapolated": True,
                 "note": note,
             })
 
-    # Full month data — use actual
-    estimate = round(cur_total, 2)
-    note = f"Full month CUR data available. Total monthly expense: ${estimate:,.2f}"
+    estimate = round(base_total, 2)
+    note = f"Full month data. Expense: ${float(expense_total):,.2f}{mkt_note} = ${estimate:,.2f}"
     return jsonify({
         "estimate": estimate,
-        "cur_total": estimate,
+        "expense_total": round(float(expense_total), 2),
+        "marketplace_total": round(float(marketplace_total), 2),
+        "unadjusted_mkt": round(unadjusted_mkt, 2),
+        "base_total": estimate,
         "days_elapsed": days_in_month,
         "total_days": days_in_month,
         "is_extrapolated": False,
