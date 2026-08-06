@@ -2178,18 +2178,14 @@ async function openInvoiceModal(month, inv) {
 
   title.textContent = `Invoice Detail — ${month.slice(0,7)}`;
 
-  // Fetch latest adj data (po_number, purchaser_name) for this month from summary
-  let adjs = inv.mkt_adjustments || [];
-  if (!adjs.length) {
-    try {
-      const yr = parseInt(month.slice(0,4));
-      const mo = parseInt(month.slice(5,7));
-      const fy = mo >= 7 ? yr + 1 : yr;
-      const sr = await fetch(`/AWSFinOps/api/receiving/summary?fy=${fy}`);
-      const sd = await sr.json();
-      const mData = (sd.months || []).find(m2 => m2.month === month);
-      if (mData) adjs = mData.mkt_adjustments || [];
-    } catch(e) { /* use whatever we have */ }
+  // Always fetch fresh adj data directly for this month
+  let adjs = [];
+  try {
+    const ar = await fetch(`/AWSFinOps/api/receiving/adjustments/${month}`);
+    const ad = await ar.json();
+    adjs = ad.adjustments || [];
+  } catch(e) {
+    adjs = inv.mkt_adjustments || [];
   }
 
   const validated       = inv.validated === true || inv.validated === 1;

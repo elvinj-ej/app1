@@ -819,7 +819,27 @@ def api_receiving_invoice_get(month):
             "FROM invoice_line_items WHERE invoice_id=?", (inv["id"],)
         ).fetchall()
         inv["line_items"] = [dict(i) for i in items]
+        # Include marketplace adjustments so the modal can populate the orange box
+        adj_rows = conn.execute(
+            "SELECT workload, adjustment, note, po_number, purchaser_name "
+            "FROM marketplace_adjustments WHERE month=? AND adjustment != 0",
+            (month,),
+        ).fetchall()
+        inv["mkt_adjustments"] = [dict(r) for r in adj_rows]
     return jsonify({"invoice": inv})
+
+
+@app.route("/AWSFinOps/api/receiving/adjustments/<month>", methods=["GET"])
+@login_required
+def api_receiving_adjustments(month):
+    """Return marketplace adjustments for a given month (for the receiving modal)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT workload, adjustment, note, po_number, purchaser_name "
+            "FROM marketplace_adjustments WHERE month=? AND adjustment != 0",
+            (month,),
+        ).fetchall()
+    return jsonify({"adjustments": [dict(r) for r in rows]})
 
 
 @app.route("/AWSFinOps/api/receiving/invoice/<month>", methods=["POST"])
