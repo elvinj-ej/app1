@@ -126,6 +126,36 @@ def init_db():
             "updated_at  DATETIME DEFAULT (datetime('now')),"
             "PRIMARY KEY (workload, month))"
         )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS receiving_forecast ("
+            "month              TEXT PRIMARY KEY,"
+            "received_forecast  REAL,"
+            "forecast_note      TEXT,"
+            "updated_at         DATETIME DEFAULT (datetime('now')))"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS invoice_uploads ("
+            "id              INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "month           TEXT NOT NULL,"
+            "filename        TEXT NOT NULL,"
+            "pdf_blob        BLOB,"
+            "account_number  TEXT,"
+            "validated       INTEGER DEFAULT 0,"
+            "total_new_charges REAL,"
+            "uploaded_by     TEXT,"
+            "uploaded_at     DATETIME DEFAULT (datetime('now')))"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS invoice_line_items ("
+            "id              INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "invoice_id      INTEGER NOT NULL REFERENCES invoice_uploads(id),"
+            "month           TEXT NOT NULL,"
+            "line_type       TEXT,"
+            "description     TEXT,"
+            "amount          REAL,"
+            "po_number       TEXT,"
+            "workload_match  TEXT)"
+        )
 
         # Migrate existing Shared Cost accounts from 'Consumption' → 'Shared'
         _SHARED_ACCOUNTS = ("AWS Networks", "Billing", "Network F5", "Network Firewall")

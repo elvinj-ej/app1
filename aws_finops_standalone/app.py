@@ -764,6 +764,361 @@ def api_summary():
     return jsonify({"months": result})
 
 
+# ── API: receiving — forecast ─────────────────────────────────────────────────
+
+@app.route("/AWSFinOps/api/receiving/forecast/<month>", methods=["GET"])
+@login_required
+def api_receiving_forecast_get(month):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT received_forecast, forecast_note FROM receiving_forecast WHERE month=?", (month,)
+        ).fetchone()
+    return jsonify(dict(row) if row else {"received_forecast": None, "forecast_note": ""})
+
+
+@app.route("/AWSFinOps/api/receiving/forecast/<month>", methods=["POST"])
+@login_required
+def api_receiving_forecast_save(month):
+    data = request.get_json(force=True)
+    try:
+        forecast = float(data.get("received_forecast") or 0) or None
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    note = (data.get("forecast_note") or "").strip()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO receiving_forecast (month, received_forecast, forecast_note) VALUES (?,?,?) "
+            "ON CONFLICT(month) DO UPDATE SET received_forecast=excluded.received_forecast, "
+            "forecast_note=excluded.forecast_note, updated_at=datetime('now')",
+            (month, forecast, note),
+        )
+    log.info(f"Receiving forecast saved: {month} by {session.get('username','')}")
+    return jsonify({"ok": True})
+
+
+# ── API: receiving — invoice upload ───────────────────────────────────────────
+
+@app.route("/AWSFinOps/api/receiving/invoice/<month>", methods=["GET"])
+@login_required
+def api_receiving_invoice_get(month):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, filename, account_number, validated, total_new_charges, uploaded_at "
+            "FROM invoice_uploads WHERE month=? ORDER BY id DESC LIMIT 1", (month,)
+        ).fetchone()
+        if not row:
+            return jsonify({"invoice": None})
+        inv = dict(row)
+        items = conn.execute(
+            "SELECT line_type, description, amount, po_number, workload_match "
+            "FROM invoice_line_items WHERE invoice_id=?", (inv["id"],)
+        ).fetchall()
+        inv["line_items"] = [dict(i) for i in items]
+    return jsonify({"invoice": inv})
+
+
+@app.route("/AWSFinOps/api/receiving/invoice/<month>", methods=["POST"])
+@login_required
+def api_receiving_invoice_upload(month):
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "No file received."}), 400
+    if not f.filename.lower().endswith(".pdf"):
+        return jsonify({"error": "Only PDF files are accepted."}), 400
+
+    tmp_path = os.path.join(UPLOAD_TMP, f"{uuid.uuid4().hex}.pdf")
+    try:
+        f.save(tmp_path)
+        pdf_bytes = open(tmp_path, "rb").read()
+
+        from aws_invoice_parser import parse_invoice
+        parsed = parse_invoice(tmp_path)
+
+        # Match marketplace lines to adjusted workloads for this month
+        with get_conn() as conn:
+            adj_rows = conn.execute(
+                "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?",
+                (month,),
+            ).fetchall()
+        adj_map = {r["workload"]: {"adj": float(r["adjustment"]), "note": r["note"] or ""} for r in adj_rows}
+
+        # Assign workload matches to marketplace lines based on amount proximity
+        mkt_lines = parsed["marketplace_lines"]
+        adj_items = [{"workload": k, **v} for k, v in adj_map.items() if v["adj"] != 0]
+
+        used = set()
+        for line in mkt_lines:
+            best = None
+            best_delta = 1e9
+            for item in adj_items:
+                if item["workload"] in used:
+                    continue
+                # adjustments are negative (removed), invoice amounts positive
+                delta = abs(line["amount"] - abs(item["adj"]))
+                if delta < best_delta:
+                    best_delta = delta
+                    best = item
+            if best and best_delta < max(50, line["amount"] * 0.05):
+                line["workload_match"] = best["workload"]
+                used.add(best["workload"])
+            else:
+                line["workload_match"] = ""
+
+        with get_conn() as conn:
+            # Remove previous upload for this month
+            old = conn.execute(
+                "SELECT id FROM invoice_uploads WHERE month=?", (month,)
+            ).fetchall()
+            for o in old:
+                conn.execute("DELETE FROM invoice_line_items WHERE invoice_id=?", (o["id"],))
+            conn.execute("DELETE FROM invoice_uploads WHERE month=?", (month,))
+
+            conn.execute(
+                "INSERT INTO invoice_uploads (month, filename, pdf_blob, account_number, validated, total_new_charges, uploaded_by) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (month, f.filename, pdf_bytes, parsed["account_number"],
+                 1 if parsed["validated"] else 0,
+                 parsed["total_new_charges"],
+                 session.get("username", "")),
+            )
+            inv_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            for line in parsed["all_lines"]:
+                conn.execute(
+                    "INSERT INTO invoice_line_items (invoice_id, month, line_type, description, amount, po_number, workload_match) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (inv_id, month, line["line_type"], line["description"],
+                     line["amount"], line.get("po_number", ""), line.get("workload_match", "")),
+                )
+
+        log.info(f"Invoice uploaded for {month}: {f.filename} by {session.get('username','')}")
+        return jsonify({
+            "ok":              True,
+            "account_number":  parsed["account_number"],
+            "validated":       parsed["validated"],
+            "total_new_charges": parsed["total_new_charges"],
+            "marketplace_lines": mkt_lines,
+            "all_lines":       parsed["all_lines"],
+        })
+    except Exception as e:
+        log.error(f"Invoice upload error for {month}: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+
+
+@app.route("/AWSFinOps/api/receiving/invoice/<month>/pdf", methods=["GET"])
+@login_required
+def api_receiving_invoice_pdf(month):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT filename, pdf_blob FROM invoice_uploads WHERE month=? ORDER BY id DESC LIMIT 1",
+            (month,),
+        ).fetchone()
+    if not row or not row["pdf_blob"]:
+        return jsonify({"error": "No invoice found."}), 404
+    resp = make_response(row["pdf_blob"])
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="{row["filename"]}"'
+    return resp
+
+
+# ── API: receiving — email ─────────────────────────────────────────────────────
+
+@app.route("/AWSFinOps/api/receiving/send-email/<month>", methods=["POST"])
+@login_required
+def api_receiving_send_email(month):
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.application import MIMEApplication
+        from email.utils import formatdate
+
+        with get_conn() as conn:
+            inv_row = conn.execute(
+                "SELECT id, filename, pdf_blob, account_number, validated, total_new_charges FROM invoice_uploads "
+                "WHERE month=? ORDER BY id DESC LIMIT 1", (month,)
+            ).fetchone()
+            fc_row = conn.execute(
+                "SELECT received_forecast, forecast_note FROM receiving_forecast WHERE month=?", (month,)
+            ).fetchone()
+            adj_rows = conn.execute(
+                "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?", (month,)
+            ).fetchall()
+
+        if not inv_row:
+            return jsonify({"error": "No invoice uploaded for this month."}), 400
+
+        inv = dict(inv_row)
+        fc  = dict(fc_row) if fc_row else {}
+        received_forecast  = float(fc.get("received_forecast") or 0)
+        total_new_charges  = float(inv.get("total_new_charges") or 0)
+        mkt_adj_total      = abs(sum(float(r["adjustment"] or 0) for r in adj_rows if float(r["adjustment"] or 0) < 0))
+        gap                = total_new_charges - received_forecast - mkt_adj_total
+
+        with get_conn() as conn:
+            items = conn.execute(
+                "SELECT line_type, description, amount, po_number, workload_match "
+                "FROM invoice_line_items WHERE invoice_id=? AND line_type='marketplace'",
+                (inv["id"],),
+            ).fetchall()
+
+        def fmt(v):
+            return f"${v:,.2f}"
+
+        lines_html = "".join(
+            f"<tr><td>{i['description']}</td><td>{i['po_number'] or '—'}</td>"
+            f"<td>{i['workload_match'] or '—'}</td><td style='text-align:right'>{fmt(i['amount'])}</td></tr>"
+            for i in items
+        )
+
+        html_body = f"""
+<html><body style="font-family:Arial,sans-serif;font-size:14px">
+<p>Hi team,</p>
+<p>Please find below the AWS Marketplace receiving summary for <strong>{month[:7]}</strong>.</p>
+
+<h3>Invoice Summary</h3>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">
+  <tr><td><strong>Account</strong></td><td>{inv['account_number']} {'✅ Validated' if inv['validated'] else '⚠️ Not matched'}</td></tr>
+  <tr><td><strong>Invoice Total New Charges (excl GST)</strong></td><td>{fmt(total_new_charges)}</td></tr>
+  <tr><td><strong>Received Forecast</strong></td><td>{fmt(received_forecast)}</td></tr>
+  <tr><td><strong>Marketplace Purchases (adjusted)</strong></td><td>{fmt(mkt_adj_total)}</td></tr>
+  <tr><td><strong>Gap</strong></td><td style="color:{'red' if gap > 0 else 'green'}">{fmt(gap)}</td></tr>
+</table>
+
+<h3>Marketplace Line Items</h3>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">
+  <tr style="background:#f0f0f0">
+    <th>Description</th><th>PO Number</th><th>Workload</th><th>Amount</th>
+  </tr>
+  {lines_html if lines_html else '<tr><td colspan="4">No marketplace items found</td></tr>'}
+</table>
+
+<p>Please update the Finance tool with the gap amount of <strong>{fmt(gap)}</strong>.</p>
+<p>Invoice PDF is attached.</p>
+<br><p>AWS FinOps Team</p>
+</body></html>
+"""
+
+        smtp_host = os.environ.get("SMTP_HOST", "smtp.cochlear.com")
+        smtp_port = int(os.environ.get("SMTP_PORT", "25"))
+        from_addr = os.environ.get("SMTP_FROM", "noreply-awsfinops@cochlear.com")
+        to_addr   = "global-aws-finops@cochlear.com"
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"AWS Marketplace Receiving — {month[:7]}"
+        msg["From"]    = from_addr
+        msg["To"]      = to_addr
+        msg["Date"]    = formatdate(localtime=True)
+        msg.attach(MIMEText(html_body, "html"))
+
+        if inv.get("pdf_blob"):
+            att = MIMEApplication(inv["pdf_blob"], _subtype="pdf")
+            att.add_header("Content-Disposition", "attachment", filename=inv["filename"])
+            msg.attach(att)
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+            s.sendmail(from_addr, [to_addr], msg.as_string())
+
+        log.info(f"Receiving email sent for {month} by {session.get('username','')}")
+        return jsonify({"ok": True, "to": to_addr})
+
+    except Exception as e:
+        log.error(f"Email send error for {month}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ── API: receiving — summary (all months in FY) ────────────────────────────────
+
+@app.route("/AWSFinOps/api/receiving/summary", methods=["GET"])
+@login_required
+def api_receiving_summary():
+    fy = request.args.get("fy", "").strip()
+    if not fy:
+        return jsonify({"error": "fy parameter required"}), 400
+
+    # FY = July→June; fy=2027 means 2026-07 to 2027-06
+    year = int(fy)
+    months_in_fy = [
+        f"{year - 1}-{m:02d}-01" for m in range(7, 13)
+    ] + [
+        f"{year}-{m:02d}-01" for m in range(1, 7)
+    ]
+
+    with get_conn() as conn:
+        fc_rows = conn.execute(
+            "SELECT month, received_forecast, forecast_note FROM receiving_forecast WHERE month IN ({})".format(
+                ",".join("?" * len(months_in_fy))
+            ),
+            months_in_fy,
+        ).fetchall()
+        fc_map = {r["month"]: dict(r) for r in fc_rows}
+
+        inv_rows = conn.execute(
+            "SELECT month, filename, account_number, validated, total_new_charges, uploaded_at "
+            "FROM invoice_uploads WHERE month IN ({}) AND id IN ("
+            "  SELECT MAX(id) FROM invoice_uploads GROUP BY month)".format(
+                ",".join("?" * len(months_in_fy))
+            ),
+            months_in_fy,
+        ).fetchall()
+        inv_map = {r["month"]: dict(r) for r in inv_rows}
+
+        adj_rows = conn.execute(
+            "SELECT month, workload, adjustment, note FROM marketplace_adjustments WHERE month IN ({})".format(
+                ",".join("?" * len(months_in_fy))
+            ),
+            months_in_fy,
+        ).fetchall()
+
+    adj_by_month: dict = {}
+    for r in adj_rows:
+        adj_by_month.setdefault(r["month"], []).append(dict(r))
+
+    result = []
+    for m in months_in_fy:
+        fc   = fc_map.get(m, {})
+        inv  = inv_map.get(m)
+        adjs = adj_by_month.get(m, [])
+
+        received_forecast = float(fc.get("received_forecast") or 0)
+        total_new_charges = float(inv["total_new_charges"] or 0) if inv else None
+        mkt_adj_total     = abs(sum(float(a["adjustment"] or 0) for a in adjs if float(a["adjustment"] or 0) < 0))
+        gap               = (total_new_charges - received_forecast - mkt_adj_total) if total_new_charges is not None else None
+
+        result.append({
+            "month":             m,
+            "receiving_month":   _add_months(m, 2),
+            "received_forecast": received_forecast or None,
+            "forecast_note":     fc.get("forecast_note", ""),
+            "mkt_adjustments":   adjs,
+            "mkt_adj_total":     mkt_adj_total,
+            "invoice":           inv,
+            "total_new_charges": total_new_charges,
+            "gap":               gap,
+        })
+
+    return jsonify({"months": result})
+
+
+def _add_months(month_str: str, n: int) -> str:
+    """Add n months to a YYYY-MM-DD string, return YYYY-MM-DD."""
+    from datetime import date
+    import calendar
+    parts = month_str.split("-")
+    y, m = int(parts[0]), int(parts[1])
+    m += n
+    while m > 12:
+        m -= 12
+        y += 1
+    last = calendar.monthrange(y, m)[1]
+    return f"{y}-{m:02d}-{min(int(parts[2]), last):02d}"
+
+
 # ── API: status ────────────────────────────────────────────────────────────────
 
 @app.route("/AWSFinOps/api/status", methods=["GET"])

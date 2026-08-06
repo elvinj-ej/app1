@@ -203,6 +203,7 @@ input[type=file]{display:none}
   <button class="tab-btn" data-tab="runcost">📊 Detailed Monthly AWS Consumption</button>
   <button class="tab-btn" data-tab="upload">📤 Upload CUR</button>
   <button class="tab-btn" data-tab="workloads">⚙️ Workloads</button>
+  <button class="tab-btn" data-tab="receiving">📬 Receiving</button>
 </div>
 
 <!-- ═══ RUN COST TAB ═══════════════════════════════════════════════════════════ -->
@@ -421,6 +422,39 @@ input[type=file]{display:none}
   <div id="wl-wrap"></div>
 </div>
 
+<!-- ═══ RECEIVING TAB ════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-receiving">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div>
+      <h3 style="font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:4px">Marketplace Receiving</h3>
+      <p style="font-size:.82rem;color:var(--muted)">Monthly receiving process for AWS Marketplace purchases — upload Telstra invoice PDF to validate account, extract marketplace line items, and calculate gap vs received forecast.</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <label style="font-size:.82rem;font-weight:600;color:var(--muted)">Financial Year</label>
+      <select id="rcv-fy-select" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:.85rem;background:var(--surface)">
+        <option value="2026">FY26 (Jul 2025 – Jun 2026)</option>
+        <option value="2027" selected>FY27 (Jul 2026 – Jun 2027)</option>
+        <option value="2028">FY28 (Jul 2027 – Jun 2028)</option>
+      </select>
+    </div>
+  </div>
+  <div id="rcv-wrap">
+    <div style="text-align:center;padding:40px;color:var(--muted)">Loading…</div>
+  </div>
+</div>
+
+<!-- ═══ RECEIVING — invoice detail modal ════════════════════════════════════ -->
+<div class="modal-bg" id="rcv-modal">
+  <div class="modal" style="max-width:760px;width:95vw">
+    <h3 id="rcv-modal-title">Invoice Detail</h3>
+    <div id="rcv-modal-body"></div>
+    <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn" id="rcv-email-btn" style="background:var(--navy)">📧 Send Email</button>
+      <button class="btn btn-secondary" id="rcv-modal-close">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ WORKLOAD MODAL ═══════════════════════════════════════════════════════ -->
 <div class="modal-bg" id="wl-modal">
   <div class="modal">
@@ -509,6 +543,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     if (btn.dataset.tab === "workloads") loadWorkloads();
     if (btn.dataset.tab === "summary")   loadSummary();
     if (btn.dataset.tab === "runcost")   loadMonths();
+    if (btn.dataset.tab === "receiving") loadReceiving();
   });
 });
 
@@ -1952,6 +1987,267 @@ function updateSummaryKPIs(months) {
   document.getElementById("sum-kpi-avg").textContent     = count ? fmt(totalRun / count) : "—";
   renderRunBurnRate();
   renderProjectBurnRate();
+}
+
+// ── Receiving Tab ─────────────────────────────────────────────────────────────
+
+const rcvFySelect = document.getElementById("rcv-fy-select");
+rcvFySelect.addEventListener("change", loadReceiving);
+document.getElementById("rcv-modal-close").addEventListener("click", () => {
+  document.getElementById("rcv-modal").style.display = "none";
+});
+
+let rcvCurrentMonth = null;
+
+async function loadReceiving() {
+  const fy  = rcvFySelect.value;
+  const wrap = document.getElementById("rcv-wrap");
+  wrap.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">Loading…</div>`;
+  try {
+    const r = await fetch(`/AWSFinOps/api/receiving/summary?fy=${fy}`);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    renderReceiving(data.months, fy);
+  } catch(e) {
+    wrap.innerHTML = `<div style="color:#c00;padding:20px">Error: ${e.message}</div>`;
+  }
+}
+
+function renderReceiving(months, fy) {
+  const wrap = document.getElementById("rcv-wrap");
+
+  const rows = months.map(m => {
+    const hasInv  = !!m.invoice;
+    const gap     = m.gap;
+    const gapColor = gap == null ? "var(--muted)" : gap > 0 ? "#C0392B" : "#2E7D32";
+    const gapStr  = gap == null ? "—" : `${gap >= 0 ? "+" : ""}${fmt(gap)}`;
+    const rfmt    = v => v != null ? fmt(v) : "—";
+
+    // Marketplace adjustments list
+    const adjList = m.mkt_adjustments.length
+      ? m.mkt_adjustments.map(a => `<div style="font-size:.75rem;color:var(--muted)">${a.workload}: ${fmt(Math.abs(a.adjustment))}${a.note ? ` (${a.note})` : ""}</div>`).join("")
+      : `<div style="font-size:.75rem;color:var(--muted)">None recorded</div>`;
+
+    return `<tr data-month="${m.month}">
+      <td style="font-weight:600">${m.month.slice(0,7)}</td>
+      <td style="color:var(--muted)">${m.receiving_month.slice(0,7)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <input type="number" class="rcv-forecast-input" data-month="${m.month}"
+            value="${m.received_forecast != null ? m.received_forecast : ""}"
+            placeholder="Enter amount"
+            style="width:120px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:.82rem;background:var(--surface)">
+          <button class="btn btn-sm rcv-forecast-save" data-month="${m.month}" style="padding:4px 10px;font-size:.75rem">Save</button>
+        </div>
+        ${m.forecast_note ? `<div style="font-size:.74rem;color:var(--muted);margin-top:3px">${m.forecast_note}</div>` : ""}
+      </td>
+      <td>
+        ${adjList}
+        ${m.mkt_adj_total > 0 ? `<div style="font-size:.78rem;font-weight:600;color:var(--navy);margin-top:4px">Total: ${fmt(m.mkt_adj_total)}</div>` : ""}
+      </td>
+      <td>
+        ${hasInv
+          ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+               <span style="font-size:.78rem;color:${m.invoice.validated ? '#2E7D32' : '#C0392B'}">${m.invoice.validated ? '✅' : '⚠️'} ${m.invoice.account_number || '—'}</span>
+               <button class="btn btn-sm rcv-view-invoice" data-month="${m.month}" style="padding:3px 8px;font-size:.74rem">View</button>
+             </div>
+             <div style="font-size:.76rem;color:var(--muted);margin-top:2px">${m.invoice.filename}</div>`
+          : `<label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--navy);font-weight:600">
+               <input type="file" accept=".pdf" class="rcv-pdf-input" data-month="${m.month}" style="display:none">
+               📎 Upload PDF
+             </label>`}
+      </td>
+      <td style="font-size:.85rem;font-weight:700;color:${hasInv ? '#555' : 'var(--muted)'}">
+        ${rfmt(m.total_new_charges)}
+      </td>
+      <td style="font-size:.88rem;font-weight:700;color:${gapColor}">
+        ${gapStr}
+        ${gap != null ? `<div style="font-size:.72rem;font-weight:400;color:var(--muted)">${gap > 0 ? "↑ Underpaid" : "↓ Overpaid / Credit"}</div>` : ""}
+      </td>
+    </tr>`;
+  }).join("");
+
+  wrap.innerHTML = `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="background:var(--navy-light,#2B3752);color:#fff">
+            <th style="padding:10px 12px;text-align:left;white-space:nowrap">Consumption Month</th>
+            <th style="padding:10px 12px;text-align:left;white-space:nowrap">Receiving Month</th>
+            <th style="padding:10px 12px;text-align:left;min-width:200px">Received Forecast
+              <div style="font-size:.7rem;font-weight:400;opacity:.8">Amount expected from Finance before invoice</div>
+            </th>
+            <th style="padding:10px 12px;text-align:left;min-width:180px">Marketplace PO Purchases
+              <div style="font-size:.7rem;font-weight:400;opacity:.8">From adjustments in Detailed Monthly tab</div>
+            </th>
+            <th style="padding:10px 12px;text-align:left;min-width:180px">Invoice PDF
+              <div style="font-size:.7rem;font-weight:400;opacity:.8">Account: 228530556149</div>
+            </th>
+            <th style="padding:10px 12px;text-align:right;white-space:nowrap">Total New Charges
+              <div style="font-size:.7rem;font-weight:400;opacity:.8">From invoice excl. GST</div>
+            </th>
+            <th style="padding:10px 12px;text-align:right;white-space:nowrap">Gap
+              <div style="font-size:.7rem;font-weight:400;opacity:.8">Invoice − Forecast − Marketplace</div>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="rcv-tbody">
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;font-size:.78rem;color:var(--muted);padding:8px 12px;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+      <strong>Gap formula:</strong> Total New Charges (from invoice) − Received Forecast − Marketplace Purchases (adjusted).
+      A positive gap means the invoice is higher than expected — update Finance tool with this amount.
+      A negative gap means the invoice is lower (credit or overpayment).
+    </div>`;
+
+  // Bind events
+  wrap.querySelectorAll(".rcv-forecast-save").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const month = btn.dataset.month;
+      const input = wrap.querySelector(`.rcv-forecast-input[data-month="${month}"]`);
+      const val   = parseFloat(input.value) || null;
+      btn.textContent = "…";
+      try {
+        const r = await fetch(`/AWSFinOps/api/receiving/forecast/${month}`, {
+          method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({received_forecast: val, forecast_note: ""}),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        btn.textContent = "✓";
+        setTimeout(() => { btn.textContent = "Save"; }, 1500);
+      } catch(e) {
+        btn.textContent = "✗";
+        alert("Error: " + e.message);
+      }
+    });
+  });
+
+  wrap.querySelectorAll(".rcv-pdf-input").forEach(input => {
+    input.addEventListener("change", async () => {
+      const month = input.dataset.month;
+      if (!input.files[0]) return;
+      const fd = new FormData();
+      fd.append("file", input.files[0]);
+      const tr = input.closest("tr");
+      const uploadCell = input.closest("label").parentElement;
+      uploadCell.innerHTML = `<span style="font-size:.8rem;color:var(--muted)">Uploading…</span>`;
+      try {
+        const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}`, {method:"POST", body: fd});
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "Upload failed");
+        openInvoiceModal(month, data);
+        loadReceiving();
+      } catch(e) {
+        uploadCell.innerHTML = `<span style="color:#c00;font-size:.8rem">✗ ${e.message}</span>`;
+      }
+    });
+  });
+
+  wrap.querySelectorAll(".rcv-view-invoice").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const month = btn.dataset.month;
+      const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}`);
+      const data = await r.json();
+      if (data.invoice) openInvoiceModal(month, data.invoice);
+    });
+  });
+}
+
+function openInvoiceModal(month, inv) {
+  rcvCurrentMonth = month;
+  const modal  = document.getElementById("rcv-modal");
+  const title  = document.getElementById("rcv-modal-title");
+  const body   = document.getElementById("rcv-modal-body");
+  const emailBtn = document.getElementById("rcv-email-btn");
+
+  title.textContent = `Invoice Detail — ${month.slice(0,7)}`;
+
+  const validated = inv.validated || inv.validated === 1;
+  const acct      = inv.account_number || "—";
+  const total     = inv.total_new_charges != null ? fmt(inv.total_new_charges) : "—";
+
+  const mktLines  = (inv.line_items || inv.marketplace_lines || []).filter(l => l.line_type === "marketplace" || (!l.line_type));
+  const allLines  = inv.line_items || inv.all_lines || [];
+
+  const mktHtml = mktLines.length
+    ? mktLines.map(l => `<tr>
+        <td style="padding:6px 8px">${l.description}</td>
+        <td style="padding:6px 8px">${l.po_number || "—"}</td>
+        <td style="padding:6px 8px">${l.workload_match || "—"}</td>
+        <td style="padding:6px 8px;text-align:right">${fmt(l.amount)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" style="padding:10px;text-align:center;color:var(--muted)">No marketplace (NO EDP DISC) lines found</td></tr>`;
+
+  const allLinesHtml = allLines.length
+    ? allLines.map(l => `<tr style="font-size:.78rem">
+        <td style="padding:4px 8px">${l.description}</td>
+        <td style="padding:4px 8px;text-align:right;color:${l.amount < 0 ? '#2E7D32' : '#333'}">${fmt(l.amount)}</td>
+        <td style="padding:4px 8px"><span style="font-size:.7rem;padding:2px 6px;border-radius:10px;background:${l.line_type==='marketplace'?'#FFF3E0':'#E3F2FD'};color:${l.line_type==='marketplace'?'#E65100':'#1565C0'}">${l.line_type}</span></td>
+      </tr>`).join("")
+    : `<tr><td colspan="3" style="padding:10px;text-align:center;color:var(--muted)">No line items parsed</td></tr>`;
+
+  body.innerHTML = `
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="padding:10px 16px;border-radius:8px;background:${validated?'#E8F5E9':'#FFF3E0'};border:1px solid ${validated?'#A5D6A7':'#FFCC80'}">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--muted)">Account</div>
+        <div style="font-size:1rem;font-weight:700;color:${validated?'#2E7D32':'#E65100'}">${validated ? "✅" : "⚠️"} ${acct}</div>
+        <div style="font-size:.72rem;color:var(--muted)">${validated ? "Matched 228530556149" : "Does not match expected account"}</div>
+      </div>
+      <div style="padding:10px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--muted)">Total New Charges excl. GST</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--navy)">${total}</div>
+        <div style="font-size:.72rem;color:var(--muted)">From invoice</div>
+      </div>
+      <div style="flex:1;padding:10px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--muted)">File</div>
+        <div style="font-size:.84rem;color:var(--navy)">${inv.filename || "—"}</div>
+        <a href="/AWSFinOps/api/receiving/invoice/${month}/pdf" target="_blank" style="font-size:.76rem;color:var(--yellow)">View PDF ↗</a>
+      </div>
+    </div>
+
+    <h4 style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">Marketplace Purchases (NO EDP DISC)</h4>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:.82rem">
+      <thead><tr style="background:#FFF3E0">
+        <th style="padding:7px 8px;text-align:left">Description</th>
+        <th style="padding:7px 8px;text-align:left">PO Number</th>
+        <th style="padding:7px 8px;text-align:left">Matched Workload</th>
+        <th style="padding:7px 8px;text-align:right">Amount</th>
+      </tr></thead>
+      <tbody>${mktHtml}</tbody>
+    </table>
+
+    <h4 style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">All Line Items</h4>
+    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
+      <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <thead><tr style="background:var(--surface);position:sticky;top:0">
+          <th style="padding:6px 8px;text-align:left">Description</th>
+          <th style="padding:6px 8px;text-align:right">Amount</th>
+          <th style="padding:6px 8px;text-align:left">Type</th>
+        </tr></thead>
+        <tbody>${allLinesHtml}</tbody>
+      </table>
+    </div>`;
+
+  emailBtn.onclick = async () => {
+    if (!confirm(`Send receiving email to global-aws-finops@cochlear.com for ${month.slice(0,7)}?`)) return;
+    emailBtn.textContent = "Sending…";
+    emailBtn.disabled = true;
+    try {
+      const r = await fetch(`/AWSFinOps/api/receiving/send-email/${month}`, {method:"POST"});
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Send failed");
+      emailBtn.textContent = "✓ Sent";
+    } catch(e) {
+      emailBtn.textContent = "✗ Error";
+      alert("Email error: " + e.message);
+    } finally {
+      setTimeout(() => { emailBtn.textContent = "📧 Send Email"; emailBtn.disabled = false; }, 3000);
+    }
+  };
+
+  modal.style.display = "flex";
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
