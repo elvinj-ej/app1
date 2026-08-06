@@ -1490,7 +1490,15 @@ def api_project_email(month, workload_key):
             sign = "+" if v >= 0 else ""
             return f"{prefix}{sign}${v:,.2f}"
 
-        # deviation: finops vs forecast (for MES/CNA); actual vs group budget (ADA)
+        # Period-aware budget for CNA (Jul-Dec $35,700 · Jan-Jun $64,000)
+        def _period_budget(wl_key, m, db_budget):
+            if wl_key == "CNA":
+                return 64000.0 if int(m[5:7]) <= 6 else 35700.0
+            return db_budget
+
+        workload_budget = _period_budget(workload_key, month, cur["budget"]) if not is_ada else _ADA_GROUP_BUDGET
+
+        # deviation: cross-charge total vs workload budget
         cur_actual_val = cur["actual"]
         cur_finops_val = cur["finops"]
         if is_ada:
@@ -1499,21 +1507,15 @@ def api_project_email(month, workload_key):
             dev_label   = "Over budget" if deviation > 0 else "Within budget"
             forecast_label = "Group budget " + fmtd(_ADA_GROUP_BUDGET) + "/mo"
         else:
-            if forecast_val:
-                deviation = cur_finops_val - float(forecast_val)
-                dev_formula = "FinOps Total " + fmtd(cur_finops_val) + " − Forecast " + fmtd(float(forecast_val)) + " = " + fmts(deviation)
-                dev_label   = "Over forecast" if deviation > 0 else "Under forecast"
-                forecast_label = fmtd(float(forecast_val))
-            else:
-                deviation = None
-                dev_formula = "No forecast set for this month"
-                dev_label   = ""
-                forecast_label = "—"
+            deviation = cur_finops_val - workload_budget
+            dev_formula = "Total Cross Charge Amount " + fmtd(cur_finops_val) + " − Budget " + fmtd(workload_budget) + " = " + fmts(deviation)
+            dev_label   = "Over budget" if deviation > 0 else "Under budget"
+            forecast_label = fmtd(workload_budget)
 
         dev_color = "#C0392B" if (deviation or 0) > 0 else "#1B7340"
 
         # ── trend rows ────────────────────────────────────────────────────────
-        trend_col_hdr = "Actual (no alloc)" if is_ada else "FinOps Total"
+        trend_col_hdr = "Actual (no alloc)" if is_ada else "Total Cross Charge"
         trend_html = ""
         if trend:
             trend_rows = ""
@@ -1595,8 +1597,8 @@ def api_project_email(month, workload_key):
             shared_note_html = (
                 '<tr><td style="padding:0 36px 20px">'
                 '<div style="background:#EEF2FF;border:1px solid #C5CAE9;border-radius:6px;padding:10px 14px;font-size:12px;color:#283593">'
-                '<strong>FinOps Total includes shared cost allocation:</strong> '
-                'Actuals ' + fmtd(cur["actual"]) + ' + Shared Alloc ' + fmtd(cur["shared"]) + ' = FinOps Total ' + fmtd(cur["finops"]) +
+                '<strong>Total Cross Charge Amount includes shared cost allocation:</strong> '
+                'Actuals ' + fmtd(cur["actual"]) + ' + Shared Alloc ' + fmtd(cur["shared"]) + ' = Total Cross Charge ' + fmtd(cur["finops"]) +
                 '<span style="color:#666;font-size:11px;margin-left:6px">(Shared pool distributed proportionally across all Run &amp; Project workloads)</span>'
                 '</div>'
                 '</td></tr>'
@@ -1614,14 +1616,14 @@ def api_project_email(month, workload_key):
 
         # ── pre-compute all conditional strings (avoid expressions inside f-strings) ──
         subject         = "AWS FinOps — " + workload_key + " Monthly Cost Summary — " + display_month
-        kpi_budget_lbl  = "Group Budget" if is_ada else "Forecast"
-        kpi_budget_sub  = "USD 244,000/yr · transferred to ISD" if is_ada else "Project forecast for month"
+        kpi_budget_lbl  = "Group Budget" if is_ada else "Budget per month"
+        kpi_budget_sub  = "USD 244,000/yr · transferred to ISD" if is_ada else "Monthly workload budget"
         dev_arrow       = "&#9651;" if (deviation or 0) > 0 else "&#9661;"
         finops_row_html = "" if is_ada else (
             '<tr><td style="padding:0 36px 16px">'
             '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
             '<td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">'
-            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">FinOps Total (incl. Shared Alloc)</div>'
+            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Total Cross Charge Amount</div>'
             '<div style="font-size:20px;font-weight:700;color:#1A2744">' + fmtd(cur["finops"]) + '</div>'
             '<div style="font-size:11px;color:#888;margin-top:2px">Actuals + shared cost allocation + Telstra diff</div>'
             '</td></tr></table></td></tr>'
@@ -1639,15 +1641,15 @@ def api_project_email(month, workload_key):
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FA;padding:32px 0">
   <tr><td align="center">
     <table width="660" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
-      <tr><td style="background:""" + hdr_grad + """;padding:28px 36px">
+      <tr><td style="background:""" + hdr_grad + """;padding:36px 40px">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
           <td>
-            <div style="color:#F0C040;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">AWS FinOps &middot; """ + workload_key + """</div>
-            <div style="color:#fff;font-size:22px;font-weight:700">Monthly Cost Summary</div>
-            <div style="color:rgba(255,255,255,.75);font-size:13px;margin-top:4px">""" + hdr_sub + """</div>
-            <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:2px">Consumption Month: """ + display_month + """</div>
+            <div style="color:#F0C040;font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">AWS FinOps &middot; """ + workload_key + """ &middot; Monthly Cost Report</div>
+            <div style="color:#fff;font-size:36px;font-weight:800;line-height:1.15;letter-spacing:-.5px">""" + workload_key + """ Cost Summary</div>
+            <div style="color:rgba(255,255,255,.85);font-size:17px;font-weight:600;margin-top:8px">""" + hdr_sub + """</div>
+            <div style="display:inline-block;margin-top:12px;background:rgba(255,255,255,.15);border-radius:20px;padding:5px 14px;color:rgba(255,255,255,.9);font-size:13px;font-weight:600;letter-spacing:.3px">&#128197; Consumption Month: """ + display_month + """</div>
           </td>
-          <td align="right" style="color:rgba(255,255,255,.3);font-size:42px">""" + hdr_icon + """</td>
+          <td align="right" style="color:rgba(255,255,255,.2);font-size:72px;vertical-align:top;padding-top:4px">""" + hdr_icon + """</td>
         </tr></table>
       </td></tr>
       <tr><td style="padding:24px 36px 16px">

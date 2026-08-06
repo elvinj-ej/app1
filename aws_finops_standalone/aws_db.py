@@ -57,8 +57,8 @@ _SEED_WORKLOADS = [
     ("Trackwise",         "",                       "Other",             "",                         "",                                                              0),
     # Project X-charge
     ("Model Gateway",     "",                       "Project",           "",                         "",                                                              0),
-    ("CNA",               "Corporate Supply Chain", "Project",           "Leigh Wells",              "",                                                              28013.40),
-    ("MES",               "Corporate Supply Chain", "Project",           "Rushka Plunkett",          "",                                                              26000.00),
+    ("CNA",               "Corporate Supply Chain", "Project",           "Leigh Wells",              "Jul-Dec $35,700/mo · Jan-Jun $64,000/mo",                       35700.00),
+    ("MES",               "Corporate Supply Chain", "Project",           "Rushka Plunkett",          "",                                                              round(560000/12, 2)),
     ("Clark AI",          "ADA",                    "Project",           "Jennifer Ilaya",           "AWG implementations consideration",                             0),
     ("DataInsights",      "ADA",                    "Project",           "Jennifer Ilaya",           "AWG implementations consideration",                             0),
     ("Sonar",             "ADA",                    "Project",           "Jennifer Ilaya",           "",                                                              0),
@@ -195,9 +195,17 @@ def init_db():
         # Ensure DPX MCP and Olingo Odata remain Consumption
         conn.execute("UPDATE workloads SET cost_category='Consumption' WHERE name IN ('DPX MCP', 'Olingo Odata')")
 
-        # FY27 project annual budgets: MES $560k/yr, CNA $910k+$50k=$960k/yr
-        conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='MES'", (560000 / 12,))
-        conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='CNA'", (960000 / 12,))
+        # FY27 project budgets — only update if still at the original placeholder seed values.
+        # This prevents resetting user edits on every app restart.
+        conn.execute(
+            "UPDATE workloads SET budget_monthly=? WHERE name='MES' AND ABS(budget_monthly - 26000.0) < 1",
+            (round(560000 / 12, 2),),
+        )
+        # CNA: Jul–Dec 2026 = $35,700/mo  |  Jan–Jun 2027 = $64,000/mo
+        # Seed to 35700; the email endpoint picks the right period at send-time.
+        conn.execute(
+            "UPDATE workloads SET budget_monthly=35700.0 WHERE name='CNA' AND (budget_monthly < 36000 OR ABS(budget_monthly - 80000.0) < 1)",
+        )
 
         # ADA group: shared annual budget of USD 244,000 ($20,333/mo total).
         # No individual workload budgets — tracked as a group against the total.
