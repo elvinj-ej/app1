@@ -94,6 +94,7 @@ table.detail-tbl td.num{white-space:normal;vertical-align:top}
 thead.hd-shared tr{background:var(--col-shared);color:#fff}
 thead.hd-run    tr{background:var(--col-run);color:#fff}
 thead.hd-project tr{background:var(--col-project);color:#fff}
+thead.hd-ada    tr{background:#2E7D32;color:#fff}
 th{padding:10px 10px;text-align:left;font-weight:600;font-size:.76rem;
    text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
 th.num,td.num{text-align:right}
@@ -851,22 +852,44 @@ async function loadRunCost(month) {
       d.deviation_run_vs_budget != null ? (d.deviation_run_vs_budget > 0 ? "+" : "") + fmt(d.deviation_run_vs_budget) : "—"}</td>
   </tr>`;
 
-  // ── Project table ─────────────────────────────────────────────────────────
-  let pRows = d.project_rows.map(r => `<tr>
+  // ── Project table — split non-ADA and ADA ────────────────────────────────
+  const ADA_SET = new Set(["Clark AI", "DataInsights", "Sonar", "Model Gateway"]);
+  const nonAdaProj = d.project_rows.filter(r => r.domain !== "ADA" && !ADA_SET.has(r.workload));
+  const adaProj    = d.project_rows.filter(r => r.domain === "ADA" || ADA_SET.has(r.workload));
+
+  const makeProjectRow = r => `<tr>
     <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>
     ${rpTelstra(r)}${devCell(r.deviation)}
-  </tr>`).join("");
+  </tr>`;
+
+  let pRows = nonAdaProj.map(makeProjectRow).join("");
+  const nonAdaBudget = nonAdaProj.reduce((s,r) => s + (r.budget_monthly||0), 0);
+  const nonAdaActual = nonAdaProj.reduce((s,r) => s + r.actual, 0);
+  const nonAdaFinops = nonAdaProj.reduce((s,r) => s + r.total, 0);
   pRows += `<tr class="row-subtotal-project">
     <td colspan="4"><strong>Total Project X-charge</strong></td>
-    <td class="num">${fmt(d.total_project_budget)}</td>
-    <td class="num">${fmt(d.total_project_actual)}</td>
+    <td class="num">${nonAdaBudget ? fmt(nonAdaBudget) : "—"}</td>
+    <td class="num">${fmt(nonAdaActual)}</td>
     <td class="num"></td>
-    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(d.total_project_finops)}</strong></td>` : ""}
-    <td class="num ${d.deviation_proj_vs_budget != null ? (d.deviation_proj_vs_budget > 0 ? "dev-pos":"dev-neg") : ""}">${
-      d.deviation_proj_vs_budget != null ? (d.deviation_proj_vs_budget > 0 ? "+" : "") + fmt(d.deviation_proj_vs_budget) : "—"}</td>
+    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(nonAdaFinops)}</strong></td>` : ""}
+    <td class="num">—</td>
+  </tr>`;
+
+  let adaRows = adaProj.map(makeProjectRow).join("");
+  const adaBudget = adaProj.reduce((s,r) => s + (r.budget_monthly||0), 0);
+  const adaActual = adaProj.reduce((s,r) => s + r.actual, 0);
+  const adaFinops = adaProj.reduce((s,r) => s + r.total, 0);
+  const adaDev    = adaBudget ? adaActual - adaBudget : null;
+  adaRows += `<tr style="background:#E8F5E9;font-weight:600">
+    <td colspan="4"><strong>Total ADA Projects</strong></td>
+    <td class="num">${adaBudget ? fmt(adaBudget) : "—"}</td>
+    <td class="num">${fmt(adaActual)}</td>
+    <td class="num">—</td>
+    ${hasTelstra ? `<td class="num">—</td><td class="num"><strong>${fmt(adaFinops)}</strong></td>` : ""}
+    <td class="num ${adaDev != null ? (adaDev > 0 ? "dev-pos":"dev-neg") : ""}">${adaDev != null ? (adaDev > 0 ? "+" : "") + fmt(adaDev) : "—"}</td>
   </tr>`;
 
   // ── Grand total table — same colgroup so numeric columns align with tables above ──
@@ -923,6 +946,9 @@ async function loadRunCost(month) {
 
       <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>Project X-charge</div>
       <table class="detail-tbl">${rpHead("hd-project")}<tbody>${pRows}</tbody></table>
+
+      <div class="section-label" style="margin-top:20px"><span class="dot" style="background:#2E7D32"></span>ADA Projects <span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:8px">Actual spend only — no shared alloc or Telstra diff applied</span></div>
+      <table class="detail-tbl"><thead class="hd-ada"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th>Info</th><th class="num">Budget/mo</th><th class="num">Actuals</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${adaRows}</tbody></table>
 
       <div class="section-label" style="margin-top:20px"><span class="dot" style="background:var(--col-run)"></span>Grand Total Summary</div>
       <table class="detail-tbl">${grandHead}<tbody>${grandRows}</tbody></table>
@@ -985,7 +1011,9 @@ async function loadWorkloads() {
   const unassigned  = unassignedData.tags || [];
   const shared      = wls.filter(w => w.cost_category === "Shared");
   const consumption = wls.filter(w => w.cost_category === "Consumption");
-  const project     = wls.filter(w => w.cost_category === "Project");
+  const allProject  = wls.filter(w => w.cost_category === "Project");
+  const project     = allProject.filter(w => w.domain !== "ADA");
+  const adaProject  = allProject.filter(w => w.domain === "ADA");
   const other       = wls.filter(w => w.cost_category === "Other");
 
   const COLS = 9; // Workload, Domain, Budget Mgr, Budget/mo, Description, CUR Tag, Accounts, Actions
@@ -1043,10 +1071,27 @@ async function loadWorkloads() {
     </table></div>`;
   }
 
+  const adaTotalBudget = adaProject.reduce((s,w) => s + (w.budget_monthly||0), 0);
+  const adaBudgetNote = adaTotalBudget > 0
+    ? `<div style="margin-top:6px;font-size:.76rem;color:#2E7D32;font-weight:600">Total monthly budget: ${fmt(adaTotalBudget)} · Annual: ${fmt(adaTotalBudget * 12)} (USD 244,000)</div>`
+    : "";
+
+  function makeAdaTable(label, list) {
+    const countBadge = `<span style="background:rgba(0,0,0,.12);padding:1px 7px;border-radius:10px;font-size:.75rem;margin-left:8px">${list.length}</span>`;
+    return `
+    <div class="section-label" style="margin-top:20px;color:#2E7D32">
+      <span class="dot" style="background:#2E7D32"></span>${label}${countBadge}
+      <span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:12px">Actual spend only — budget transferred to ISD (USD 244,000 annual)</span>
+    </div>
+    <div class="tbl-wrap"><table>${wlHead("#2E7D32")}<tbody>${makeRows(list)}</tbody></table></div>
+    ${adaBudgetNote}`;
+  }
+
   document.getElementById("wl-wrap").innerHTML =
     makeTable("Shared Cost Accounts",        "var(--col-shared)",  shared)      +
     makeTable("Run Cost — Consumption",       "var(--col-run)",     consumption) +
     makeTable("Project X-charge",            "var(--col-project)", project)     +
+    makeAdaTable("ADA Projects",             adaProject)                        +
     makeTable('Other — grouped under Run Cost "Other" row', "#E65100", other)   +
     unassignedSection;
 }
@@ -1911,7 +1956,7 @@ function renderProjectBurnRate() {
     }
   }
 
-  // ADA combined row — now has an annual budget ($193,200 = sum of member monthly budgets × 12)
+  // ADA combined row — FY27 annual budget USD 244,000 (transferred to ISD)
   const adaMembersFound = adaCombined.members.length > 0;
   const adaRow = adaMembersFound ? (() => {
     const annualBudget  = adaCombined.budget_monthly * 12;
@@ -1926,23 +1971,16 @@ function renderProjectBurnRate() {
     const statusCol     = isOnTrack ? "#2E7D32" : "#C0392B";
     const barColor      = pct == null ? "#ccc" : pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
     const barPct        = Math.min(pct || 0, 100);
-    // Member breakdown string e.g. "Clark AI $3k/mo · DataInsights $3.4k/mo · Sonar $9.7k/mo · Model Gateway (no budget)"
-    const memberBreakdown = adaCombined.members.map(m => {
-      const b = adaCombined.memberBudgets[m] || 0;
-      return b > 0 ? `${m} ${fmt(b)}/mo` : `${m} (no budget)`;
-    }).join(" · ");
-
     return `
-      <div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px">
+      <div style="border:1px solid #A5D6A7;border-radius:6px;padding:12px 16px;margin-bottom:8px;background:#F1F8E9">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
-          <strong style="font-size:.9rem;color:var(--navy)">ADA Projects</strong>
+          <strong style="font-size:.9rem;color:#2E7D32">ADA Projects</strong>
           ${annualBudget > 0 ? `<span style="font-size:.78rem;font-weight:700;color:${statusCol}">${isOnTrack ? "✓ On track" : "⚠ Watch"}</span>` : ""}
-          <span style="font-size:.75rem;color:var(--muted);margin-left:auto">Annual forecast ${annualBudget ? fmt(annualBudget) : "—"}</span>
+          <span style="font-size:.75rem;color:var(--muted);margin-left:auto">Annual forecast USD 244,000 (${annualBudget ? fmt(annualBudget) : "—"} AUD)</span>
         </div>
-        <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">${memberBreakdown}</div>
+        <div style="font-size:.72rem;color:#2E7D32;font-weight:600;margin-bottom:6px">Total budget for ADA workloads is USD 244,000. This amount has already been transferred to ISD.</div>
         <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px">Actual spend only — excludes shared cost allocation &amp; Telstra diff. Marketplace via PO already adjusted out.</div>
-        <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px;padding:6px 8px;background:var(--bg);border-radius:4px;border-left:2px solid var(--border)">
-          Annual forecast = ${fmt(adaCombined.budget_monthly)}/mo × 12 = ${fmt(annualBudget)}.
+        <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-bottom:8px;padding:6px 8px;background:#fff;border-radius:4px;border-left:2px solid #A5D6A7">
           Projected = Spent YTD + avg of last ${last3a.length < 3 ? last3a.length : 3} actual month${last3a.length !== 1 ? "s" : ""} (${avgMo ? fmt(avgMo) : "—"}/mo) × ${remainingMos} remaining months.
         </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
