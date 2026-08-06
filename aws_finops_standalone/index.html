@@ -860,7 +860,7 @@ async function loadRunCost(month) {
   const _EMAIL_WLS = new Set(["MES", "CNA"]);
   const makeProjectRow = r => {
     const emailBtn = _EMAIL_WLS.has(r.workload)
-      ? `<button onclick="sendProjectEmail(${JSON.stringify(selMonth)},${JSON.stringify(r.workload)},this)"
+      ? `<button onclick='sendProjectEmail(${JSON.stringify(selMonth)},${JSON.stringify(r.workload)},this)'
            style="margin-left:6px;padding:2px 8px;font-size:.72rem;background:linear-gradient(135deg,#1B7340,#27AE60);color:#fff;border:none;border-radius:4px;cursor:pointer;vertical-align:middle">
            ✉ Email</button>`
       : "";
@@ -895,7 +895,7 @@ async function loadRunCost(month) {
     <td colspan="4">
       <strong>Total ADA Projects</strong>
       <span style="font-size:.72rem;font-weight:400;color:#2E7D32;margin-left:6px">Group budget — USD 244,000/yr</span>
-      <button onclick="sendProjectEmail(${JSON.stringify(selMonth)},'ADA',this)"
+      <button onclick='sendProjectEmail(${JSON.stringify(selMonth)},"ADA",this)'
         style="margin-left:10px;padding:2px 8px;font-size:.72rem;background:linear-gradient(135deg,#1B5E20,#2E7D32);color:#fff;border:none;border-radius:4px;cursor:pointer;vertical-align:middle;font-weight:400">
         ✉ Email</button>
     </td>
