@@ -1346,7 +1346,7 @@ def api_receiving_send_email(month):
         to_addr   = "global-aws-finops@cochlear.com"
 
         msg = MIMEMultipart("mixed")
-        msg["Subject"] = f"AWS Marketplace Receiving — {display_month}"
+        msg["Subject"] = f"AWS Receiving Summary for {display_month}"
         msg["From"]    = from_addr
         msg["To"]      = to_addr
         msg["Date"]    = formatdate(localtime=True)
