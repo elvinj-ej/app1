@@ -1208,14 +1208,15 @@ def api_receiving_send_email(month):
         mkt_rows_html = ""
         for a in adjs:
             amt = abs(float(a["adjustment"]))
-            mkt_rows_html += f"""
-            <tr>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a['workload']}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('po_number') or '—'}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('purchaser_name') or '—'}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('note') or '—'}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">{fmtd(amt)}</td>
-            </tr>"""
+            mkt_rows_html += (
+                '<tr>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a["workload"] or "") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a.get("po_number") or "—") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a.get("purchaser_name") or "—") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a.get("note") or "—") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">' + fmtd(amt) + '</td>'
+                '</tr>'
+            )
 
         if not mkt_rows_html:
             mkt_rows_html = '<tr><td colspan="5" style="padding:14px;text-align:center;color:#888">No marketplace purchases recorded for this month</td></tr>'
@@ -1544,14 +1545,15 @@ def api_project_email(month, workload_key):
         mkt_rows_html = ""
         for a in adjs:
             amt = abs(float(a["adjustment"]))
-            mkt_rows_html += f"""
-            <tr>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a['workload']}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('po_number') or '—'}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('purchaser_name') or '—'}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('note') or '—'}</td>
-              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">{fmtd(amt)}</td>
-            </tr>"""
+            mkt_rows_html += (
+                '<tr>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a["workload"] or "") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a.get("po_number") or "—") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a.get("purchaser_name") or "—") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">' + (a.get("note") or "—") + '</td>'
+                '<td style="padding:10px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">' + fmtd(amt) + '</td>'
+                '</tr>'
+            )
         if not mkt_rows_html:
             mkt_rows_html = '<tr><td colspan="5" style="padding:14px;text-align:center;color:#888">No marketplace purchases recorded for this month</td></tr>'
 
