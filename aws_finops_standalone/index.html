@@ -2075,6 +2075,10 @@ function renderReceiving(months, fy) {
           ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                <span style="font-size:.78rem;color:${m.invoice.validated ? '#2E7D32' : '#C0392B'}">${m.invoice.validated ? '✅' : '⚠️'} ${m.invoice.account_number || '—'}</span>
                <button class="btn btn-sm rcv-view-invoice" data-month="${m.month}" style="padding:3px 8px;font-size:.74rem">View</button>
+               <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:.74rem;color:var(--navy);font-weight:600;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface)">
+                 <input type="file" accept=".pdf" class="rcv-pdf-input" data-month="${m.month}" style="display:none">
+                 🔄 Replace
+               </label>
              </div>
              <div style="font-size:.76rem;color:var(--muted);margin-top:2px">${m.invoice.filename}</div>`
           : `<label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--navy);font-weight:600">
@@ -2183,9 +2187,9 @@ function renderReceiving(months, fy) {
       if (!input.files[0]) return;
       const fd = new FormData();
       fd.append("file", input.files[0]);
-      const tr = input.closest("tr");
-      const uploadCell = input.closest("label").parentElement;
-      uploadCell.innerHTML = `<span style="font-size:.8rem;color:var(--muted)">Uploading…</span>`;
+      const td = input.closest("td");
+      const prevContent = td.innerHTML;
+      td.innerHTML = `<span style="font-size:.8rem;color:var(--muted)">⏳ Uploading…</span>`;
       try {
         const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}`, {method:"POST", body: fd});
         const data = await r.json();
@@ -2193,7 +2197,16 @@ function renderReceiving(months, fy) {
         await openInvoiceModal(month, data);
         loadReceiving();
       } catch(e) {
-        uploadCell.innerHTML = `<span style="color:#c00;font-size:.8rem">✗ ${e.message}</span>`;
+        td.innerHTML = `<span style="color:#c00;font-size:.8rem">✗ ${e.message}</span>
+          <div style="margin-top:6px"><label style="cursor:pointer;font-size:.78rem;color:var(--navy)">
+            <input type="file" accept=".pdf" class="rcv-pdf-input" data-month="${month}" style="display:none">
+            Retry upload
+          </label></div>`;
+        // re-bind the retry input
+        td.querySelector(".rcv-pdf-input").addEventListener("change", async ev => {
+          td.innerHTML = prevContent;
+          td.querySelector(".rcv-pdf-input").dispatchEvent(new Event("change"));
+        });
       }
     });
   });
