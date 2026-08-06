@@ -1381,6 +1381,369 @@ def api_receiving_send_email(month):
         return jsonify({"error": str(e)}), 500
 
 
+# ── API: project email (MES / CNA / ADA) ─────────────────────────────────────
+
+_ADA_WORKLOADS = {"Clark AI", "DataInsights", "Sonar", "Model Gateway"}
+_ADA_GROUP_BUDGET = 244_000 / 12   # $20,333.33/mo group total
+
+@app.route("/AWSFinOps/api/project-email/<month>/<workload_key>", methods=["POST"])
+@login_required
+def api_project_email(month, workload_key):
+    """Send monthly cost summary email for MES, CNA, or ADA."""
+    try:
+        import smtplib, calendar as _cal
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.utils import formatdate
+
+        if workload_key not in ("MES", "CNA", "ADA"):
+            return jsonify({"error": "workload_key must be MES, CNA or ADA"}), 400
+
+        is_ada = workload_key == "ADA"
+        _MN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+        def _display(m):
+            p = m.split("-"); return f"{_MN[int(p[1])-1]} '{p[0][2:]}"
+
+        def _prev_month(m, n):
+            y, mo, _ = (int(x) for x in m.split("-"))
+            for _ in range(n):
+                mo -= 1
+                if mo == 0: mo = 12; y -= 1
+            return f"{y:04d}-{mo:02d}-01"
+
+        # ── gather current + last 3 months data ──────────────────────────────
+        months_needed = [month] + [_prev_month(month, i) for i in range(1, 4)]
+
+        def _extract(d, wl_key):
+            """Pull relevant figures from compute() output for this workload key."""
+            if wl_key == "ADA":
+                rows = [r for r in d["project_rows"] if r["domain"] == "ADA" or r["workload"] in _ADA_WORKLOADS]
+                actual      = sum(r["actual"] for r in rows)
+                marketplace = sum(r.get("actual_marketplace", 0) for r in rows)
+                finops      = actual          # ADA: no shared alloc / telstra diff
+                budget      = _ADA_GROUP_BUDGET
+                shared      = 0.0
+                return {"actual": actual, "marketplace": marketplace, "finops": finops,
+                        "budget": budget, "shared": shared, "rows": rows}
+            else:
+                row = next((r for r in d["project_rows"] if r["workload"] == wl_key), None)
+                if row is None:
+                    return None
+                return {"actual": row["actual"], "marketplace": row.get("actual_marketplace", 0),
+                        "finops": row["total"], "budget": row.get("budget_monthly") or 0,
+                        "shared": row["shared_alloc"], "rows": [row]}
+
+        computed = {}
+        for m in months_needed:
+            try:
+                computed[m] = compute(m)
+            except Exception:
+                computed[m] = None
+
+        cur = _extract(computed[month], workload_key) if computed[month] else None
+        if cur is None:
+            return jsonify({"error": f"No data for {workload_key} in {month}"}), 400
+
+        # forecast from monthly_inputs
+        mi = computed[month]
+        forecast_val = mi.get("forecast_project") if mi else None
+
+        # last 3 prior months trend
+        trend_months = months_needed[1:]
+        trend = []
+        for m in trend_months:
+            if computed.get(m):
+                ex = _extract(computed[m], workload_key)
+                if ex:
+                    trend.append({"month": m, "display": _display(m), "finops": ex["finops"],
+                                  "actual": ex["actual"], "marketplace": ex["marketplace"]})
+
+        # ── marketplace adjustments ───────────────────────────────────────────
+        with get_conn() as conn:
+            if is_ada:
+                # all ADA workloads
+                placeholders = ",".join("?" * len(_ADA_WORKLOADS))
+                adj_rows = conn.execute(
+                    f"SELECT workload, adjustment, note, po_number, purchaser_name "
+                    f"FROM marketplace_adjustments WHERE month=? AND workload IN ({placeholders}) AND adjustment != 0",
+                    (month, *_ADA_WORKLOADS),
+                ).fetchall()
+            else:
+                adj_rows = conn.execute(
+                    "SELECT workload, adjustment, note, po_number, purchaser_name "
+                    "FROM marketplace_adjustments WHERE month=? AND workload=? AND adjustment != 0",
+                    (month, workload_key),
+                ).fetchall()
+        adjs = [dict(r) for r in adj_rows]
+        mkt_adj_total = abs(sum(float(r["adjustment"]) for r in adjs if float(r["adjustment"]) < 0))
+
+        # ── display helpers ───────────────────────────────────────────────────
+        display_month = _display(month)
+
+        def fmtd(v):
+            return f"${v:,.2f}" if v is not None else "—"
+
+        def fmts(v, prefix=""):
+            if v is None: return "—"
+            sign = "+" if v >= 0 else ""
+            return f"{prefix}{sign}${v:,.2f}"
+
+        # deviation: finops vs forecast (for MES/CNA); actual vs group budget (ADA)
+        if is_ada:
+            deviation = cur["actual"] - _ADA_GROUP_BUDGET
+            dev_formula = f"Actual {fmtd(cur['actual'])} − Group Budget {fmtd(_ADA_GROUP_BUDGET)} = {fmts(deviation)}"
+            dev_label   = "Over budget" if deviation > 0 else "Within budget"
+            forecast_label = f"Group budget {fmtd(_ADA_GROUP_BUDGET)}/mo"
+        else:
+            if forecast_val:
+                deviation = cur["finops"] - float(forecast_val)
+                dev_formula = f"FinOps Total {fmtd(cur['finops'])} − Forecast {fmtd(float(forecast_val))} = {fmts(deviation)}"
+                dev_label   = "Over forecast" if deviation > 0 else "Under forecast"
+                forecast_label = fmtd(float(forecast_val))
+            else:
+                deviation = None
+                dev_formula = "No forecast set for this month"
+                dev_label   = ""
+                forecast_label = "—"
+
+        dev_color = "#C0392B" if (deviation or 0) > 0 else "#1B7340"
+
+        # ── trend rows ────────────────────────────────────────────────────────
+        trend_html = ""
+        if trend:
+            trend_rows = ""
+            for t in trend:
+                trend_rows += f"""
+                <tr>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;font-weight:600">{t['display']}</td>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">{fmtd(t['actual'])}</td>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">{fmtd(t['marketplace'])}</td>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">{fmtd(t['finops'])}</td>
+                </tr>"""
+            trend_html = f"""
+      <tr><td style="padding:0 36px 20px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;margin-bottom:10px">Last 3 Months Trend</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF;border-radius:8px;overflow:hidden">
+          <thead><tr style="background:#F4F6FA">
+            <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Month</th>
+            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Actuals</th>
+            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Marketplace</th>
+            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">{'Actual (no alloc)' if is_ada else 'FinOps Total'}</th>
+          </tr></thead>
+          <tbody>{trend_rows}</tbody>
+        </table>
+      </td></tr>"""
+
+        # ── marketplace table ─────────────────────────────────────────────────
+        mkt_rows_html = ""
+        for a in adjs:
+            amt = abs(float(a["adjustment"]))
+            mkt_rows_html += f"""
+            <tr>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a['workload']}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('po_number') or '—'}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('purchaser_name') or '—'}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('note') or '—'}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">{fmtd(amt)}</td>
+            </tr>"""
+        if not mkt_rows_html:
+            mkt_rows_html = '<tr><td colspan="5" style="padding:14px;text-align:center;color:#888">No marketplace purchases recorded for this month</td></tr>'
+
+        # ── ADA workload breakdown (per-workload rows for ADA email) ──────────
+        ada_breakdown_html = ""
+        if is_ada and computed[month]:
+            ada_wl_rows = [r for r in computed[month]["project_rows"]
+                           if r["domain"] == "ADA" or r["workload"] in _ADA_WORKLOADS]
+            if ada_wl_rows:
+                rows_html = "".join(f"""
+                <tr>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3">{r['workload']}</td>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">{fmtd(r['actual'] - r.get('actual_marketplace',0))}</td>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">{fmtd(r.get('actual_marketplace',0)) if r.get('actual_marketplace',0) else '—'}</td>
+                  <td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">{fmtd(r['actual'])}</td>
+                </tr>""" for r in ada_wl_rows)
+                ada_breakdown_html = f"""
+      <tr><td style="padding:0 36px 20px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2E7D32;margin-bottom:10px">ADA Workload Breakdown</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #A5D6A7;border-radius:8px;overflow:hidden">
+          <thead><tr style="background:#E8F5E9">
+            <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Workload</th>
+            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Expense</th>
+            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Marketplace</th>
+            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Total Actual</th>
+          </tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </td></tr>"""
+
+        # ── shared alloc note for MES/CNA ─────────────────────────────────────
+        shared_note_html = ""
+        if not is_ada and cur["shared"] > 0:
+            shared_note_html = f"""
+      <tr><td style="padding:0 36px 20px">
+        <div style="background:#EEF2FF;border:1px solid #C5CAE9;border-radius:6px;padding:10px 14px;font-size:12px;color:#283593">
+          <strong>FinOps Total includes shared cost allocation:</strong>
+          Actuals {fmtd(cur['actual'])} + Shared Alloc {fmtd(cur['shared'])} = FinOps Total {fmtd(cur['finops'])}
+          <span style="color:#666;font-size:11px;margin-left:6px">(Shared pool distributed proportionally across all Run &amp; Project workloads)</span>
+        </div>
+      </td></tr>"""
+
+        # ── header colour ─────────────────────────────────────────────────────
+        if is_ada:
+            hdr_grad = "linear-gradient(135deg,#1B5E20 0%,#2E7D32 100%)"
+            hdr_icon = "&#127808;"   # leaf
+            hdr_sub  = "ADA Projects (Clark AI · DataInsights · Sonar · Model Gateway)"
+        else:
+            hdr_grad = "linear-gradient(135deg,#1A2744 0%,#2B3F6B 100%)"
+            hdr_icon = "&#128202;"   # bar chart
+            hdr_sub  = f"Project X-charge workload"
+
+        # ── email subject ─────────────────────────────────────────────────────
+        subject = f"AWS FinOps — {workload_key} Monthly Cost Summary — {display_month}"
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#F4F6FA;font-family:'Segoe UI',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FA;padding:32px 0">
+  <tr><td align="center">
+    <table width="660" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+
+      <!-- Header -->
+      <tr><td style="background:{hdr_grad};padding:28px 36px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td>
+              <div style="color:#F0C040;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">AWS FinOps · {workload_key}</div>
+              <div style="color:#fff;font-size:22px;font-weight:700">Monthly Cost Summary</div>
+              <div style="color:rgba(255,255,255,.75);font-size:13px;margin-top:4px">{hdr_sub}</div>
+              <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:2px">Consumption Month: {display_month}</div>
+            </td>
+            <td align="right" style="color:rgba(255,255,255,.3);font-size:42px">{hdr_icon}</td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- KPI cards -->
+      <tr><td style="padding:24px 36px 16px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Total Consumption</div>
+              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(cur['actual'])}</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">Expense + marketplace actuals</div>
+            </td>
+            <td width="10"></td>
+            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Marketplace (non-adjusted)</div>
+              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(cur['marketplace'])}</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">CUR marketplace charges</div>
+            </td>
+            <td width="10"></td>
+            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">{'Group Budget' if is_ada else 'Forecast'}</div>
+              <div style="font-size:20px;font-weight:700;color:#1A2744">{forecast_label}</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">{'USD 244,000/yr · transferred to ISD' if is_ada else 'Project forecast for month'}</div>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- FinOps Total (non-ADA only) -->
+      {'<tr><td style="padding:0 36px 16px"><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">FinOps Total (incl. Shared Alloc)</div><div style="font-size:20px;font-weight:700;color:#1A2744">' + fmtd(cur["finops"]) + '</div><div style="font-size:11px;color:#888;margin-top:2px">Actuals + shared cost allocation + Telstra diff</div></td></tr></table></td></tr>' if not is_ada else ''}
+
+      <!-- Deviation -->
+      <tr><td style="padding:0 36px 16px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:{dev_color};border-radius:8px;padding:16px 20px">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td>
+                    <div style="color:rgba(255,255,255,.8);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Deviation</div>
+                    <div style="color:#fff;font-size:26px;font-weight:700;margin-top:2px">{fmts(deviation)}</div>
+                    <div style="color:rgba(255,255,255,.75);font-size:11px;margin-top:4px">{dev_label}</div>
+                  </td>
+                  <td align="right" style="color:rgba(255,255,255,.3);font-size:42px">{'&#9651;' if (deviation or 0) > 0 else '&#9661;'}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Formula note -->
+      <tr><td style="padding:0 36px 20px">
+        <div style="background:#FFFBEB;border:1px solid #F0C040;border-radius:6px;padding:10px 14px;font-size:12px;color:#6B5200">
+          <strong>Deviation formula:</strong> {dev_formula}
+        </div>
+      </td></tr>
+
+      {shared_note_html}
+      {ada_breakdown_html}
+      {trend_html}
+
+      <!-- Marketplace PO table -->
+      <tr><td style="padding:0 36px 28px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;margin-bottom:10px">
+          Marketplace PO Purchases — {display_month}
+        </div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF;border-radius:8px;overflow:hidden">
+          <thead>
+            <tr style="background:#F4F6FA">
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Workload</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">PO Number</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Purchaser</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Description</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mkt_rows_html}
+            <tr style="background:#F8FAFE">
+              <td colspan="4" style="padding:10px 14px;font-weight:700;font-size:12px">Total Marketplace (PO)</td>
+              <td style="padding:10px 14px;text-align:right;font-weight:700;font-size:13px;color:#1A2744">{fmtd(mkt_adj_total)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </td></tr>
+
+      <!-- Footer -->
+      <tr><td style="background:#F4F6FA;border-top:1px solid #DDE4EF;padding:18px 36px">
+        <div style="font-size:11px;color:#888">
+          Generated by <strong>AWS FinOps Tracker</strong> &nbsp;·&nbsp; {workload_key} &nbsp;·&nbsp; {display_month}
+        </div>
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+        smtp_host = os.environ.get("SMTP_HOST", "smtp.cochlear.com")
+        smtp_port = int(os.environ.get("SMTP_PORT", "25"))
+        from_addr = os.environ.get("SMTP_FROM", "noreply-awsfinops@cochlear.com")
+        to_addr   = "global-aws-finops@cochlear.com"
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = from_addr
+        msg["To"]      = to_addr
+        msg["Date"]    = formatdate(localtime=True)
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+            s.sendmail(from_addr, [to_addr], msg.as_string())
+
+        log.info(f"Project email sent for {workload_key}/{month} by {session.get('username','')}")
+        return jsonify({"ok": True, "to": to_addr})
+
+    except Exception as e:
+        log.error(f"Project email error {workload_key}/{month}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # ── API: receiving — summary (all months in FY) ────────────────────────────────
 
 @app.route("/AWSFinOps/api/receiving/summary", methods=["GET"])

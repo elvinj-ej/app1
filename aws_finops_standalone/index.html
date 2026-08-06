@@ -857,13 +857,21 @@ async function loadRunCost(month) {
   const nonAdaProj = d.project_rows.filter(r => r.domain !== "ADA" && !ADA_SET.has(r.workload));
   const adaProj    = d.project_rows.filter(r => r.domain === "ADA" || ADA_SET.has(r.workload));
 
-  const makeProjectRow = r => `<tr>
-    <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+  const _EMAIL_WLS = new Set(["MES", "CNA"]);
+  const makeProjectRow = r => {
+    const emailBtn = _EMAIL_WLS.has(r.workload)
+      ? `<button onclick="sendProjectEmail(${JSON.stringify(selMonth)},${JSON.stringify(r.workload)},this)"
+           style="margin-left:6px;padding:2px 8px;font-size:.72rem;background:linear-gradient(135deg,#1B7340,#27AE60);color:#fff;border:none;border-radius:4px;cursor:pointer;vertical-align:middle">
+           ✉ Email</button>`
+      : "";
+    return `<tr>
+    <td>${r.workload}${emailBtn}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>
     ${rpTelstra(r)}${devCell(r.deviation)}
   </tr>`;
+  };
 
   let pRows = nonAdaProj.map(makeProjectRow).join("");
   const nonAdaBudget = nonAdaProj.reduce((s,r) => s + (r.budget_monthly||0), 0);
@@ -884,7 +892,13 @@ async function loadRunCost(month) {
   const adaFinops = adaProj.reduce((s,r) => s + r.total, 0);
   const adaDev    = adaActual - ADA_GROUP_BUDGET;
   adaRows += `<tr style="background:#E8F5E9;font-weight:600">
-    <td colspan="4"><strong>Total ADA Projects</strong> <span style="font-size:.72rem;font-weight:400;color:#2E7D32">Group budget — USD 244,000/yr</span></td>
+    <td colspan="4">
+      <strong>Total ADA Projects</strong>
+      <span style="font-size:.72rem;font-weight:400;color:#2E7D32;margin-left:6px">Group budget — USD 244,000/yr</span>
+      <button onclick="sendProjectEmail(${JSON.stringify(selMonth)},'ADA',this)"
+        style="margin-left:10px;padding:2px 8px;font-size:.72rem;background:linear-gradient(135deg,#1B5E20,#2E7D32);color:#fff;border:none;border-radius:4px;cursor:pointer;vertical-align:middle;font-weight:400">
+        ✉ Email</button>
+    </td>
     <td class="num">${fmt(ADA_GROUP_BUDGET)}</td>
     <td class="num">${fmt(adaActual)}</td>
     <td class="num">—</td>
@@ -2045,6 +2059,24 @@ function updateSummaryKPIs(months) {
   document.getElementById("sum-kpi-avg").textContent     = count ? fmt(totalRun / count) : "—";
   renderRunBurnRate();
   renderProjectBurnRate();
+}
+
+// ── Project Email (MES / CNA / ADA) ──────────────────────────────────────────
+async function sendProjectEmail(month, workloadKey, btn) {
+  const orig = btn.innerHTML;
+  btn.innerHTML = "⏳ Sending…";
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/AWSFinOps/api/project-email/${month}/${encodeURIComponent(workloadKey)}`, {method:"POST"});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Send failed");
+    btn.innerHTML = "✅ Sent";
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 3000);
+  } catch(e) {
+    btn.innerHTML = "✗ Failed";
+    alert(`Email error (${workloadKey}): ` + e.message);
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+  }
 }
 
 // ── Receiving Tab ─────────────────────────────────────────────────────────────
