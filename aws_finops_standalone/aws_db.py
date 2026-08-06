@@ -119,13 +119,21 @@ def init_db():
         )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS marketplace_adjustments ("
-            "workload    TEXT NOT NULL,"
-            "month       TEXT NOT NULL,"
-            "adjustment  REAL NOT NULL DEFAULT 0,"
-            "note        TEXT,"
-            "updated_at  DATETIME DEFAULT (datetime('now')),"
+            "workload        TEXT NOT NULL,"
+            "month           TEXT NOT NULL,"
+            "adjustment      REAL NOT NULL DEFAULT 0,"
+            "note            TEXT,"
+            "po_number       TEXT,"
+            "purchaser_name  TEXT,"
+            "updated_at      DATETIME DEFAULT (datetime('now')),"
             "PRIMARY KEY (workload, month))"
         )
+        # Schema migration — add columns if upgrading existing DB
+        _ma_cols = {r[1] for r in conn.execute("PRAGMA table_info(marketplace_adjustments)").fetchall()}
+        if "po_number" not in _ma_cols:
+            conn.execute("ALTER TABLE marketplace_adjustments ADD COLUMN po_number TEXT")
+        if "purchaser_name" not in _ma_cols:
+            conn.execute("ALTER TABLE marketplace_adjustments ADD COLUMN purchaser_name TEXT")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS receiving_forecast ("
             "month              TEXT PRIMARY KEY,"

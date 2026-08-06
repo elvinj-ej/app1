@@ -83,13 +83,21 @@ def compute(month: str) -> dict:
         ).fetchone()
 
         adj_rows = conn.execute(
-            "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?",
+            "SELECT workload, adjustment, note, po_number, purchaser_name FROM marketplace_adjustments WHERE month=?",
             (month,),
         ).fetchall()
 
     tag_expense     = _build_tag_map(expense_rows)
     tag_marketplace = _build_tag_map(marketplace_rows)
-    adj_map = {r["workload"]: (float(r["adjustment"] or 0), r["note"] or "") for r in adj_rows}
+    adj_map = {
+        r["workload"]: (
+            float(r["adjustment"] or 0),
+            r["note"] or "",
+            r["po_number"] or "",
+            r["purchaser_name"] or "",
+        )
+        for r in adj_rows
+    }
 
     workload_names = {w["name"] for w in workloads}
     # cur_tag overrides: maps CUR workloads_tag → workload name
@@ -129,7 +137,7 @@ def compute(month: str) -> dict:
             unmatched_tags[tag] = unmatched_tags.get(tag, 0.0) + amt
 
     def net_actual(name: str) -> float:
-        adj, _ = adj_map.get(name, (0.0, ""))
+        adj, *_ = adj_map.get(name, (0.0, "", "", ""))
         return workload_expense.get(name, 0.0) + workload_marketplace.get(name, 0.0) + adj
 
     # Categorise workloads
@@ -152,9 +160,9 @@ def compute(month: str) -> dict:
     # Unmatched CUR spend → goes into Run Cost "Other" row
     total_expense_cur     = sum(tag_expense.values())
     total_marketplace_cur = sum(tag_marketplace.values())
-    total_adj             = sum(a for a, _ in adj_map.values())
+    total_adj             = sum(v[0] for v in adj_map.values())
     # Marketplace purchases paid via separate PO (negative adjustments = removed from Telstra scope)
-    total_marketplace_pos_adj = abs(sum(min(0.0, a) for a, _ in adj_map.values()))
+    total_marketplace_pos_adj = abs(sum(min(0.0, v[0]) for v in adj_map.values()))
     named_all = sum(net_actual(w["name"]) for w in workloads)
     other_actual = max(0.0, total_expense_cur + total_marketplace_cur + total_adj - named_all)
 
@@ -178,22 +186,24 @@ def compute(month: str) -> dict:
     for w in shared_wl:
         expense     = workload_expense.get(w["name"], 0.0)
         marketplace = workload_marketplace.get(w["name"], 0.0)
-        adj, adj_note = adj_map.get(w["name"], (0.0, ""))
+        adj, adj_note, adj_po, adj_purchaser = adj_map.get(w["name"], (0.0, "", "", ""))
         actual = expense + marketplace + adj
         budget = float(w["budget_monthly"] or 0)
         shared_rows.append({
-            "workload":               w["name"],
-            "domain":                 w["domain"] or "",
-            "cost_category":          "Shared",
-            "budget_manager":         w["budget_manager"] or "",
-            "description":            w["description"] or "",
-            "budget_monthly":         budget or None,
-            "actual_expense":         expense,
-            "actual_marketplace":     marketplace,
-            "marketplace_adjustment": adj,
-            "marketplace_adj_note":   adj_note,
-            "actual":                 actual,
-            "deviation":              (actual - budget) if budget else None,
+            "workload":                  w["name"],
+            "domain":                    w["domain"] or "",
+            "cost_category":             "Shared",
+            "budget_manager":            w["budget_manager"] or "",
+            "description":               w["description"] or "",
+            "budget_monthly":            budget or None,
+            "actual_expense":            expense,
+            "actual_marketplace":        marketplace,
+            "marketplace_adjustment":    adj,
+            "marketplace_adj_note":      adj_note,
+            "marketplace_po_number":     adj_po,
+            "marketplace_purchaser":     adj_purchaser,
+            "actual":                    actual,
+            "deviation":                 (actual - budget) if budget else None,
         })
 
     # ── Pass 1: Run Cost + Project rows with shared_alloc; telstra_diff=0 placeholder ──
@@ -203,7 +213,7 @@ def compute(month: str) -> dict:
     for w, target in [(w, consumption_rows) for w in run_wl] + [(w, project_rows) for w in project_wl]:
         expense     = workload_expense.get(w["name"], 0.0)
         marketplace = workload_marketplace.get(w["name"], 0.0)
-        adj, adj_note = adj_map.get(w["name"], (0.0, ""))
+        adj, adj_note, adj_po, adj_purchaser = adj_map.get(w["name"], (0.0, "", "", ""))
         actual = expense + marketplace + adj
         is_ada = (w["domain"] or "").upper() == _ADA_DOMAIN
         shared_alloc = 0.0 if is_ada else shared_for(actual)
@@ -217,10 +227,12 @@ def compute(month: str) -> dict:
             "budget_monthly":         budget or None,
             "actual_expense":         expense,
             "actual_marketplace":     marketplace,
-            "marketplace_adjustment": adj,
-            "marketplace_adj_note":   adj_note,
-            "actual":                 actual,
-            "shared_alloc":           shared_alloc,
+            "marketplace_adjustment":  adj,
+            "marketplace_adj_note":    adj_note,
+            "marketplace_po_number":   adj_po,
+            "marketplace_purchaser":   adj_purchaser,
+            "actual":                  actual,
+            "shared_alloc":            shared_alloc,
             "telstra_diff":           0.0,
             "total":                  actual + shared_alloc,
             "_is_ada":                is_ada,

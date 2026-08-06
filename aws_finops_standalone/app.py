@@ -594,20 +594,25 @@ def api_save_marketplace_adjustment():
         adjustment = float(data.get("adjustment") or 0)
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
-    note = (data.get("note") or "").strip()
+    note           = (data.get("note")           or "").strip()
+    po_number      = (data.get("po_number")      or "").strip()
+    purchaser_name = (data.get("purchaser_name") or "").strip()
 
     with get_conn() as conn:
-        if adjustment == 0 and not note:
+        if adjustment == 0 and not note and not po_number and not purchaser_name:
             conn.execute(
                 "DELETE FROM marketplace_adjustments WHERE workload=? AND month=?",
                 (workload, month),
             )
         else:
             conn.execute(
-                "INSERT INTO marketplace_adjustments (workload, month, adjustment, note) VALUES (?,?,?,?) "
+                "INSERT INTO marketplace_adjustments (workload, month, adjustment, note, po_number, purchaser_name) "
+                "VALUES (?,?,?,?,?,?) "
                 "ON CONFLICT(workload, month) DO UPDATE SET "
-                "adjustment=excluded.adjustment, note=excluded.note, updated_at=datetime('now')",
-                (workload, month, adjustment, note or None),
+                "adjustment=excluded.adjustment, note=excluded.note, "
+                "po_number=excluded.po_number, purchaser_name=excluded.purchaser_name, "
+                "updated_at=datetime('now')",
+                (workload, month, adjustment, note or None, po_number or None, purchaser_name or None),
             )
 
     log.info(f"Marketplace adjustment saved: {workload}/{month} adj={adjustment} by {session.get('username','')}")
@@ -837,10 +842,10 @@ def api_receiving_invoice_upload(month):
         # Match marketplace lines to adjusted workloads for this month
         with get_conn() as conn:
             adj_rows = conn.execute(
-                "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?",
+                "SELECT workload, adjustment, note, po_number, purchaser_name FROM marketplace_adjustments WHERE month=?",
                 (month,),
             ).fetchall()
-        adj_map = {r["workload"]: {"adj": float(r["adjustment"]), "note": r["note"] or ""} for r in adj_rows}
+        adj_map = {r["workload"]: {"adj": float(r["adjustment"]), "note": r["note"] or "", "po_number": r["po_number"] or "", "purchaser_name": r["purchaser_name"] or ""} for r in adj_rows}
 
         # Assign workload matches to marketplace lines based on amount proximity
         mkt_lines = parsed["marketplace_lines"]
@@ -890,14 +895,22 @@ def api_receiving_invoice_upload(month):
                      line["amount"], line.get("po_number", ""), line.get("workload_match", "")),
                 )
 
+        # Return adj_rows with new fields for the frontend modal
+        with get_conn() as conn:
+            fresh_adj = conn.execute(
+                "SELECT workload, adjustment, note, po_number, purchaser_name "
+                "FROM marketplace_adjustments WHERE month=?", (month,)
+            ).fetchall()
+
         log.info(f"Invoice uploaded for {month}: {f.filename} by {session.get('username','')}")
         return jsonify({
-            "ok":              True,
-            "account_number":  parsed["account_number"],
-            "validated":       parsed["validated"],
+            "ok":                True,
+            "account_number":    parsed["account_number"],
+            "validated":         parsed["validated"],
             "total_new_charges": parsed["total_new_charges"],
             "marketplace_lines": mkt_lines,
-            "all_lines":       parsed["all_lines"],
+            "all_lines":         parsed["all_lines"],
+            "mkt_adjustments":   [dict(r) for r in fresh_adj],
         })
     except Exception as e:
         log.error(f"Invoice upload error for {month}: {e}")
@@ -954,9 +967,9 @@ def api_receiving_invoice_reparse(month):
 
         with get_conn() as conn:
             adj_rows = conn.execute(
-                "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?", (month,)
+                "SELECT workload, adjustment, note, po_number, purchaser_name FROM marketplace_adjustments WHERE month=?", (month,)
             ).fetchall()
-        adj_map = {r["workload"]: {"adj": float(r["adjustment"]), "note": r["note"] or ""} for r in adj_rows}
+        adj_map = {r["workload"]: {"adj": float(r["adjustment"]), "note": r["note"] or "", "po_number": r["po_number"] or "", "purchaser_name": r["purchaser_name"] or ""} for r in adj_rows}
         adj_items = [{"workload": k, **v} for k, v in adj_map.items() if v["adj"] != 0]
 
         mkt_lines = parsed["marketplace_lines"]
@@ -1043,74 +1056,189 @@ def api_receiving_send_email(month):
                 "SELECT received_forecast, forecast_note FROM receiving_forecast WHERE month=?", (month,)
             ).fetchone()
             adj_rows = conn.execute(
-                "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?", (month,)
+                "SELECT workload, adjustment, note, po_number, purchaser_name "
+                "FROM marketplace_adjustments WHERE month=? AND adjustment != 0",
+                (month,)
             ).fetchall()
 
         if not inv_row:
             return jsonify({"error": "No invoice uploaded for this month."}), 400
 
-        inv = dict(inv_row)
-        fc  = dict(fc_row) if fc_row else {}
-        received_forecast  = float(fc.get("received_forecast") or 0)
-        total_new_charges  = float(inv.get("total_new_charges") or 0)
-        mkt_adj_total      = abs(sum(float(r["adjustment"] or 0) for r in adj_rows if float(r["adjustment"] or 0) < 0))
-        gap                = total_new_charges - received_forecast - mkt_adj_total
+        inv    = dict(inv_row)
+        fc     = dict(fc_row) if fc_row else {}
+        adjs   = [dict(r) for r in adj_rows]
 
-        with get_conn() as conn:
-            items = conn.execute(
-                "SELECT line_type, description, amount, po_number, workload_match "
-                "FROM invoice_line_items WHERE invoice_id=? AND line_type='marketplace'",
-                (inv["id"],),
-            ).fetchall()
+        received_forecast = float(fc.get("received_forecast") or 0)
+        total_new_charges = float(inv.get("total_new_charges") or 0)
+        mkt_adj_total     = abs(sum(float(r["adjustment"]) for r in adjs if float(r["adjustment"]) < 0))
+        gap               = total_new_charges - received_forecast - mkt_adj_total
 
-        def fmt(v):
-            return f"${v:,.2f}"
+        display_month = month[:7]
+        gap_color     = "#C0392B" if gap > 0 else "#1B7340"
+        gap_label     = "Underpaid — update Finance tool" if gap > 0 else "Overpaid / Credit"
+        acct_status   = "&#x2705; Validated" if inv.get("validated") else "&#x26A0;&#xFE0F; Not matched"
 
-        lines_html = "".join(
-            f"<tr><td>{i['description']}</td><td>{i['po_number'] or '—'}</td>"
-            f"<td>{i['workload_match'] or '—'}</td><td style='text-align:right'>{fmt(i['amount'])}</td></tr>"
-            for i in items
-        )
+        def fmtd(v): return f"${v:,.2f}"
 
-        html_body = f"""
-<html><body style="font-family:Arial,sans-serif;font-size:14px">
-<p>Hi team,</p>
-<p>Please find below the AWS Marketplace receiving summary for <strong>{month[:7]}</strong>.</p>
+        mkt_rows_html = ""
+        for a in adjs:
+            amt = abs(float(a["adjustment"]))
+            mkt_rows_html += f"""
+            <tr>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a['workload']}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('po_number') or '—'}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('purchaser_name') or '—'}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">{a.get('note') or '—'}</td>
+              <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">{fmtd(amt)}</td>
+            </tr>"""
 
-<h3>Invoice Summary</h3>
-<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">
-  <tr><td><strong>Account</strong></td><td>{inv['account_number']} {'✅ Validated' if inv['validated'] else '⚠️ Not matched'}</td></tr>
-  <tr><td><strong>Invoice Total New Charges (excl GST)</strong></td><td>{fmt(total_new_charges)}</td></tr>
-  <tr><td><strong>Received Forecast</strong></td><td>{fmt(received_forecast)}</td></tr>
-  <tr><td><strong>Marketplace Purchases (adjusted)</strong></td><td>{fmt(mkt_adj_total)}</td></tr>
-  <tr><td><strong>Gap</strong></td><td style="color:{'red' if gap > 0 else 'green'}">{fmt(gap)}</td></tr>
+        if not mkt_rows_html:
+            mkt_rows_html = '<tr><td colspan="5" style="padding:14px;text-align:center;color:#888">No marketplace purchases recorded for this month</td></tr>'
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#F4F6FA;font-family:'Segoe UI',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FA;padding:32px 0">
+  <tr><td align="center">
+    <table width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+
+      <!-- Header -->
+      <tr><td style="background:linear-gradient(135deg,#1A2744 0%,#2B3F6B 100%);padding:28px 36px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td>
+              <div style="color:#F0C040;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">AWS FinOps</div>
+              <div style="color:#fff;font-size:22px;font-weight:700">Marketplace Receiving Summary</div>
+              <div style="color:#A8B8D8;font-size:13px;margin-top:4px">Consumption Month: {display_month}</div>
+            </td>
+            <td align="right" style="color:#F0C040;font-size:32px">&#128230;</td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Account badge -->
+      <tr><td style="padding:20px 36px 0">
+        <table cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:#EBF5EB;border:1px solid #A5D6A7;border-radius:6px;padding:8px 14px;font-size:12px;color:#1B7340;font-weight:600">
+              {acct_status} &nbsp;·&nbsp; Account {inv['account_number']}
+            </td>
+            <td width="12"></td>
+            <td style="font-size:12px;color:#666">Invoice: <strong>{inv['filename']}</strong></td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Summary cards -->
+      <tr><td style="padding:20px 36px">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:10px 0">
+          <tr>
+            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px;width:33%">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Total New Charges</div>
+              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(total_new_charges)}</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">From invoice excl. GST</div>
+            </td>
+            <td width="10"></td>
+            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px;width:33%">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Received Forecast</div>
+              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(received_forecast)}</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">Pre-invoice estimate</div>
+            </td>
+            <td width="10"></td>
+            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px;width:33%">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Marketplace (PO)</div>
+              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(mkt_adj_total)}</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">Separate PO purchases</div>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Gap -->
+      <tr><td style="padding:0 36px 20px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:{gap_color};border-radius:8px;padding:16px 20px">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td>
+                    <div style="color:rgba(255,255,255,.8);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Gap Amount</div>
+                    <div style="color:#fff;font-size:26px;font-weight:700;margin-top:2px">{fmtd(gap)}</div>
+                    <div style="color:rgba(255,255,255,.75);font-size:11px;margin-top:4px">{gap_label}</div>
+                  </td>
+                  <td align="right" style="color:rgba(255,255,255,.35);font-size:48px">&#9651;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Formula note -->
+      <tr><td style="padding:0 36px 20px">
+        <div style="background:#FFFBEB;border:1px solid #F0C040;border-radius:6px;padding:10px 14px;font-size:12px;color:#6B5200">
+          <strong>Gap formula:</strong> Total New Charges &minus; Received Forecast &minus; Marketplace (PO) =
+          <strong>{fmtd(total_new_charges)} &minus; {fmtd(received_forecast)} &minus; {fmtd(mkt_adj_total)} = {fmtd(gap)}</strong>
+        </div>
+      </td></tr>
+
+      <!-- Marketplace table -->
+      <tr><td style="padding:0 36px 28px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;margin-bottom:10px">
+          Marketplace PO Purchases
+        </div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF;border-radius:8px;overflow:hidden">
+          <thead>
+            <tr style="background:#F4F6FA">
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Workload</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">PO Number</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Purchaser</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Description</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mkt_rows_html}
+            <tr style="background:#F8FAFE">
+              <td colspan="4" style="padding:10px 14px;font-weight:700;font-size:12px">Total</td>
+              <td style="padding:10px 14px;text-align:right;font-weight:700;font-size:13px;color:#1A2744">{fmtd(mkt_adj_total)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </td></tr>
+
+      <!-- Footer -->
+      <tr><td style="background:#F4F6FA;border-top:1px solid #DDE4EF;padding:18px 36px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="font-size:11px;color:#888">
+              Generated by <strong>AWS FinOps Tracker</strong> &nbsp;·&nbsp; {display_month} &nbsp;·&nbsp;
+              Invoice attached as PDF
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+    </table>
+  </td></tr>
 </table>
-
-<h3>Marketplace Line Items</h3>
-<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">
-  <tr style="background:#f0f0f0">
-    <th>Description</th><th>PO Number</th><th>Workload</th><th>Amount</th>
-  </tr>
-  {lines_html if lines_html else '<tr><td colspan="4">No marketplace items found</td></tr>'}
-</table>
-
-<p>Please update the Finance tool with the gap amount of <strong>{fmt(gap)}</strong>.</p>
-<p>Invoice PDF is attached.</p>
-<br><p>AWS FinOps Team</p>
-</body></html>
-"""
+</body></html>"""
 
         smtp_host = os.environ.get("SMTP_HOST", "smtp.cochlear.com")
         smtp_port = int(os.environ.get("SMTP_PORT", "25"))
         from_addr = os.environ.get("SMTP_FROM", "noreply-awsfinops@cochlear.com")
         to_addr   = "global-aws-finops@cochlear.com"
 
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"AWS Marketplace Receiving — {month[:7]}"
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = f"AWS Marketplace Receiving — {display_month}"
         msg["From"]    = from_addr
         msg["To"]      = to_addr
         msg["Date"]    = formatdate(localtime=True)
-        msg.attach(MIMEText(html_body, "html"))
+
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(html_body, "html", "utf-8"))
+        msg.attach(alt)
 
         if inv.get("pdf_blob"):
             att = MIMEApplication(inv["pdf_blob"], _subtype="pdf")
@@ -1165,7 +1293,7 @@ def api_receiving_summary():
         inv_map = {r["month"]: dict(r) for r in inv_rows}
 
         adj_rows = conn.execute(
-            "SELECT month, workload, adjustment, note FROM marketplace_adjustments WHERE month IN ({})".format(
+            "SELECT month, workload, adjustment, note, po_number, purchaser_name FROM marketplace_adjustments WHERE month IN ({})".format(
                 ",".join("?" * len(months_in_fy))
             ),
             months_in_fy,

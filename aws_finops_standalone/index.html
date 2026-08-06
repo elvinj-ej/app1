@@ -448,13 +448,12 @@ input[type=file]{display:none}
   <div class="modal" style="max-width:760px;width:95vw">
     <h3 id="rcv-modal-title">Invoice Detail</h3>
     <div id="rcv-modal-body"></div>
-    <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-      <button class="btn btn-secondary" id="rcv-debug-btn" style="font-size:.78rem">🔍 Debug PDF Text</button>
-      <button class="btn btn-secondary" id="rcv-reparse-btn" style="font-size:.78rem">↺ Re-parse</button>
-      <button class="btn" id="rcv-email-btn" style="background:var(--navy)">📧 Send Email</button>
-      <button class="btn btn-secondary" id="rcv-modal-close">Close</button>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;align-items:center">
+      <button class="btn btn-secondary" id="rcv-modal-close" style="font-size:.82rem">Close</button>
+      <button class="btn" id="rcv-email-btn" style="background:linear-gradient(135deg,#1B7340,#27AE60);border:none;padding:10px 22px;font-size:.88rem;font-weight:700;letter-spacing:.3px;box-shadow:0 2px 8px rgba(27,115,64,.35)">
+        ✉ Send Email to FinOps Team
+      </button>
     </div>
-    <div id="rcv-debug-text" style="display:none;margin-top:12px;background:#1a1a2e;color:#a8ff78;font-family:monospace;font-size:.72rem;padding:12px;border-radius:6px;max-height:300px;overflow-y:auto;white-space:pre-wrap"></div>
   </div>
 </div>
 
@@ -520,8 +519,16 @@ input[type=file]{display:none}
              placeholder="Enter negative value to negate, e.g. -1234.56"/>
     </div>
     <div class="mb14 fld">
-      <label>Note / Reason</label>
-      <input type="text" id="mkt-note" placeholder="e.g. Vendor credit applied, one-off purchase"/>
+      <label>PO Number</label>
+      <input type="text" id="mkt-po" placeholder="e.g. PO-12345"/>
+    </div>
+    <div class="mb14 fld">
+      <label>Name of Purchaser</label>
+      <input type="text" id="mkt-purchaser" placeholder="e.g. Jane Smith"/>
+    </div>
+    <div class="mb14 fld">
+      <label>Description / Note</label>
+      <input type="text" id="mkt-note" placeholder="e.g. Okta licenses Q1"/>
     </div>
     <div class="alert alert-err" id="mkt-err" style="display:none"></div>
     <div class="modal-footer">
@@ -1179,8 +1186,10 @@ let mktRow = null;
 function openMktModal(r) {
   mktRow = r;
   document.getElementById("mkt-modal-title").textContent = `Marketplace Adjustment — ${r.workload}`;
-  document.getElementById("mkt-adj").value  = r.marketplace_adjustment || "";
-  document.getElementById("mkt-note").value = r.marketplace_adj_note   || "";
+  document.getElementById("mkt-adj").value       = r.marketplace_adjustment || "";
+  document.getElementById("mkt-po").value        = r.marketplace_po_number  || "";
+  document.getElementById("mkt-purchaser").value = r.marketplace_purchaser  || "";
+  document.getElementById("mkt-note").value      = r.marketplace_adj_note   || "";
   document.getElementById("mkt-err").style.display = "none";
 
   const hasAdj = !!r.marketplace_adjustment;
@@ -1209,18 +1218,20 @@ document.getElementById("mkt-clear").addEventListener("click", async () => {
 });
 
 document.getElementById("mkt-save").addEventListener("click", async () => {
-  const adj = parseFloat(document.getElementById("mkt-adj").value) || 0;
-  const note = document.getElementById("mkt-note").value.trim();
-  await saveMktAdj(adj, note);
+  const adj          = parseFloat(document.getElementById("mkt-adj").value) || 0;
+  const note         = document.getElementById("mkt-note").value.trim();
+  const po_number    = document.getElementById("mkt-po").value.trim();
+  const purchaser_name = document.getElementById("mkt-purchaser").value.trim();
+  await saveMktAdj(adj, note, po_number, purchaser_name);
 });
 
-async function saveMktAdj(adjustment, note) {
+async function saveMktAdj(adjustment, note, po_number = "", purchaser_name = "") {
   const errEl = document.getElementById("mkt-err");
   try {
     const res  = await fetch(`${API}/marketplace-adjustment`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({workload: mktRow.workload, month: selMonth, adjustment, note}),
+      body: JSON.stringify({workload: mktRow.workload, month: selMonth, adjustment, note, po_number, purchaser_name}),
     });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error || "Save failed."; errEl.style.display = "block"; return; }
@@ -2140,7 +2151,7 @@ function renderReceiving(months, fy) {
         const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}`, {method:"POST", body: fd});
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || "Upload failed");
-        openInvoiceModal(month, data);
+        await openInvoiceModal(month, data);
         loadReceiving();
       } catch(e) {
         uploadCell.innerHTML = `<span style="color:#c00;font-size:.8rem">✗ ${e.message}</span>`;
@@ -2153,140 +2164,156 @@ function renderReceiving(months, fy) {
       const month = btn.dataset.month;
       const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}`);
       const data = await r.json();
-      if (data.invoice) openInvoiceModal(month, data.invoice);
+      if (data.invoice) await openInvoiceModal(month, data.invoice);
     });
   });
 }
 
-function openInvoiceModal(month, inv) {
+async function openInvoiceModal(month, inv) {
   rcvCurrentMonth = month;
-  const modal  = document.getElementById("rcv-modal");
-  const title  = document.getElementById("rcv-modal-title");
-  const body   = document.getElementById("rcv-modal-body");
+  const modal    = document.getElementById("rcv-modal");
+  const title    = document.getElementById("rcv-modal-title");
+  const body     = document.getElementById("rcv-modal-body");
   const emailBtn = document.getElementById("rcv-email-btn");
 
   title.textContent = `Invoice Detail — ${month.slice(0,7)}`;
 
-  const validated = inv.validated || inv.validated === 1;
-  const acct      = inv.account_number || "—";
-  const total     = inv.total_new_charges != null ? fmt(inv.total_new_charges) : "—";
+  // Fetch latest adj data (po_number, purchaser_name) for this month from summary
+  let adjs = inv.mkt_adjustments || [];
+  if (!adjs.length) {
+    try {
+      const yr = parseInt(month.slice(0,4));
+      const mo = parseInt(month.slice(5,7));
+      const fy = mo >= 7 ? yr + 1 : yr;
+      const sr = await fetch(`/AWSFinOps/api/receiving/summary?fy=${fy}`);
+      const sd = await sr.json();
+      const mData = (sd.months || []).find(m2 => m2.month === month);
+      if (mData) adjs = mData.mkt_adjustments || [];
+    } catch(e) { /* use whatever we have */ }
+  }
 
-  const mktLines  = (inv.line_items || inv.marketplace_lines || []).filter(l => l.line_type === "marketplace" || (!l.line_type));
-  const allLines  = inv.line_items || inv.all_lines || [];
+  const validated       = inv.validated === true || inv.validated === 1;
+  const acct            = inv.account_number || "—";
+  const totalCharges    = inv.total_new_charges != null ? inv.total_new_charges : null;
+  const mktAdjTotal     = adjs.reduce((s, a) => s + Math.abs(Math.min(0, parseFloat(a.adjustment || 0))), 0);
 
-  const mktHtml = mktLines.length
-    ? mktLines.map(l => `<tr>
-        <td style="padding:6px 8px">${l.description}</td>
-        <td style="padding:6px 8px">${l.po_number || "—"}</td>
-        <td style="padding:6px 8px">${l.workload_match || "—"}</td>
-        <td style="padding:6px 8px;text-align:right">${fmt(l.amount)}</td>
-      </tr>`).join("")
-    : `<tr><td colspan="4" style="padding:10px;text-align:center;color:var(--muted)">No marketplace (NO EDP DISC) lines found</td></tr>`;
+  // Gap needs received_forecast — fetch it
+  let receivedForecast  = 0;
+  try {
+    const fr = await fetch(`/AWSFinOps/api/receiving/forecast/${month}`);
+    const fd = await fr.json();
+    receivedForecast = parseFloat(fd.received_forecast || 0);
+  } catch(e) {}
 
-  const allLinesHtml = allLines.length
-    ? allLines.map(l => `<tr style="font-size:.78rem">
-        <td style="padding:4px 8px">${l.description}</td>
-        <td style="padding:4px 8px;text-align:right;color:${l.amount < 0 ? '#2E7D32' : '#333'}">${fmt(l.amount)}</td>
-        <td style="padding:4px 8px"><span style="font-size:.7rem;padding:2px 6px;border-radius:10px;background:${l.line_type==='marketplace'?'#FFF3E0':'#E3F2FD'};color:${l.line_type==='marketplace'?'#E65100':'#1565C0'}">${l.line_type}</span></td>
-      </tr>`).join("")
-    : `<tr><td colspan="3" style="padding:10px;text-align:center;color:var(--muted)">No line items parsed</td></tr>`;
+  const gap  = totalCharges != null ? totalCharges - receivedForecast - mktAdjTotal : null;
+  const gapColor = gap == null ? "#888" : gap > 0 ? "#C0392B" : "#1B7340";
+  const gapLabel = gap == null ? "—" : (gap >= 0 ? "+" : "") + fmt(gap);
+
+  // Marketplace table from adjustments
+  const mktRowsHtml = adjs.filter(a => parseFloat(a.adjustment || 0) < 0).map(a => {
+    const amt = Math.abs(parseFloat(a.adjustment));
+    return `<tr style="border-bottom:1px solid #F5E6C8">
+      <td style="padding:9px 12px;font-weight:600">${a.workload}</td>
+      <td style="padding:9px 12px;color:var(--muted)">${a.po_number || "—"}</td>
+      <td style="padding:9px 12px;color:var(--muted)">${a.purchaser_name || "—"}</td>
+      <td style="padding:9px 12px;color:var(--muted)">${a.note || "—"}</td>
+      <td style="padding:9px 12px;text-align:right;font-weight:700;color:var(--navy)">${fmt(amt)}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--muted);font-style:italic">
+    No marketplace adjustments recorded for this month.<br>
+    <span style="font-size:.75rem">Add them via the Marketplace Adjustment button in the Detailed Monthly tab.</span>
+  </td></tr>`;
 
   body.innerHTML = `
-    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px">
-      <div style="padding:10px 16px;border-radius:8px;background:${validated?'#E8F5E9':'#FFF3E0'};border:1px solid ${validated?'#A5D6A7':'#FFCC80'}">
-        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--muted)">Account</div>
-        <div style="font-size:1rem;font-weight:700;color:${validated?'#2E7D32':'#E65100'}">${validated ? "✅" : "⚠️"} ${acct}</div>
-        <div style="font-size:.72rem;color:var(--muted)">${validated ? "Matched 228530556149" : "Does not match expected account"}</div>
+    <!-- Top info strip -->
+    <div style="display:grid;grid-template-columns:auto auto 1fr;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="padding:10px 16px;border-radius:8px;background:${validated?'#EBF5EB':'#FFF3E0'};border:1px solid ${validated?'#A5D6A7':'#FFCC80'}">
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Account</div>
+        <div style="font-size:.95rem;font-weight:700;color:${validated?'#1B7340':'#C0392B'};margin-top:2px">${validated?"✅":"⚠️"} ${acct}</div>
+        <div style="font-size:.7rem;color:var(--muted)">${validated?"Matched 228530556149":"Does not match"}</div>
       </div>
       <div style="padding:10px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">
-        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--muted)">Total New Charges excl. GST</div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--navy)">${total}</div>
-        <div style="font-size:.72rem;color:var(--muted)">From invoice</div>
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Total New Charges excl. GST</div>
+        <div style="font-size:1.15rem;font-weight:700;color:var(--navy);margin-top:2px">${totalCharges != null ? fmt(totalCharges) : "—"}</div>
+        <div style="font-size:.7rem;color:var(--muted)">From invoice</div>
       </div>
-      <div style="flex:1;padding:10px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">
-        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--muted)">File</div>
-        <div style="font-size:.84rem;color:var(--navy)">${inv.filename || "—"}</div>
-        <a href="/AWSFinOps/api/receiving/invoice/${month}/pdf" target="_blank" style="font-size:.76rem;color:var(--yellow)">View PDF ↗</a>
+      <div style="padding:10px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">File</div>
+        <div style="font-size:.82rem;color:var(--navy);margin-top:2px;word-break:break-all">${inv.filename || "—"}</div>
+        <a href="/AWSFinOps/api/receiving/invoice/${month}/pdf" target="_blank"
+           style="font-size:.72rem;color:#E6A800;font-weight:600;text-decoration:none">View PDF ↗</a>
       </div>
     </div>
 
-    <h4 style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">Marketplace Purchases (NO EDP DISC)</h4>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:.82rem">
-      <thead><tr style="background:#FFF3E0">
-        <th style="padding:7px 8px;text-align:left">Description</th>
-        <th style="padding:7px 8px;text-align:left">PO Number</th>
-        <th style="padding:7px 8px;text-align:left">Matched Workload</th>
-        <th style="padding:7px 8px;text-align:right">Amount</th>
-      </tr></thead>
-      <tbody>${mktHtml}</tbody>
-    </table>
+    <!-- Gap banner -->
+    <div style="border-radius:8px;padding:14px 18px;margin-bottom:16px;
+                background:${gap == null ? '#F4F6FA' : gap > 0 ? '#FEF0EF' : '#EBF5EB'};
+                border:1px solid ${gap == null ? '#DDE4EF' : gap > 0 ? '#F5B7B1' : '#A5D6A7'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Gap</div>
+          <div style="font-size:1.4rem;font-weight:700;color:${gapColor};margin-top:2px">${gapLabel}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">
+            ${gap == null ? "Upload invoice to calculate" : gap > 0 ? "Invoice higher than expected — update Finance tool" : "Invoice lower than expected (credit or overpayment)"}
+          </div>
+        </div>
+        <div style="font-size:.74rem;color:var(--muted);text-align:right;line-height:1.6">
+          ${totalCharges != null ? `${fmt(totalCharges)} (invoice)` : "— (invoice)"}<br>
+          &minus; ${fmt(receivedForecast)} (received forecast)<br>
+          &minus; ${fmt(mktAdjTotal)} (marketplace PO)<br>
+          <span style="font-weight:700;color:${gapColor}">= ${gapLabel}</span>
+        </div>
+      </div>
+    </div>
 
-    <h4 style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">All Line Items</h4>
-    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
-      <table style="width:100%;border-collapse:collapse;font-size:.78rem">
-        <thead><tr style="background:var(--surface);position:sticky;top:0">
-          <th style="padding:6px 8px;text-align:left">Description</th>
-          <th style="padding:6px 8px;text-align:right">Amount</th>
-          <th style="padding:6px 8px;text-align:left">Type</th>
-        </tr></thead>
-        <tbody>${allLinesHtml}</tbody>
+    <!-- Marketplace purchases -->
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--navy);margin-bottom:8px">
+      Marketplace PO Purchases
+    </div>
+    <div style="border:2px solid #F0A500;border-radius:8px;overflow:hidden;margin-bottom:6px">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="background:#FFF3CD">
+            <th style="padding:9px 12px;text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;color:#6B4500">Workload</th>
+            <th style="padding:9px 12px;text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;color:#6B4500">PO Number</th>
+            <th style="padding:9px 12px;text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;color:#6B4500">Purchaser</th>
+            <th style="padding:9px 12px;text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;color:#6B4500">Description</th>
+            <th style="padding:9px 12px;text-align:right;font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;color:#6B4500">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${mktRowsHtml}
+          ${adjs.filter(a => parseFloat(a.adjustment||0) < 0).length ? `
+          <tr style="background:#FFFBEF">
+            <td colspan="4" style="padding:9px 12px;font-weight:700;font-size:.8rem">Total Marketplace</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:700;color:var(--navy)">${fmt(mktAdjTotal)}</td>
+          </tr>` : ""}
+        </tbody>
       </table>
+    </div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">
+      ℹ PO details are entered via the <strong>Marketplace Adjustment</strong> button in the Detailed Monthly tab.
     </div>`;
 
-  const debugBtn  = document.getElementById("rcv-debug-btn");
-  const reparseBtn = document.getElementById("rcv-reparse-btn");
-  const debugText  = document.getElementById("rcv-debug-text");
-
-  debugBtn.onclick = async () => {
-    debugText.style.display = debugText.style.display === "none" ? "block" : "none";
-    if (debugText.textContent) return;
-    debugText.textContent = "Loading…";
-    try {
-      const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}/raw-text`);
-      const d = await r.json();
-      debugText.textContent = d.text || d.error || "No text extracted";
-    } catch(e) {
-      debugText.textContent = "Error: " + e.message;
-    }
-  };
-
-  reparseBtn.onclick = async () => {
-    reparseBtn.textContent = "Parsing…";
-    reparseBtn.disabled = true;
-    debugText.textContent = "";
-    debugText.style.display = "none";
-    try {
-      const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}/reparse`, {method:"POST"});
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Reparse failed");
-      // Reopen modal with fresh data
-      openInvoiceModal(month, {
-        filename: inv.filename, account_number: d.account_number, validated: d.validated,
-        total_new_charges: d.total_new_charges, marketplace_lines: d.marketplace_lines,
-        all_lines: d.all_lines,
-      });
-      loadReceiving();
-    } catch(e) {
-      alert("Reparse error: " + e.message);
-      reparseBtn.textContent = "↺ Re-parse";
-      reparseBtn.disabled = false;
-    }
-  };
-
   emailBtn.onclick = async () => {
-    if (!confirm(`Send receiving email to global-aws-finops@cochlear.com for ${month.slice(0,7)}?`)) return;
-    emailBtn.textContent = "Sending…";
+    emailBtn.innerHTML = "⏳ Sending…";
     emailBtn.disabled = true;
     try {
       const r = await fetch(`/AWSFinOps/api/receiving/send-email/${month}`, {method:"POST"});
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Send failed");
-      emailBtn.textContent = "✓ Sent";
+      emailBtn.innerHTML = "✅ Sent to FinOps Team";
+      setTimeout(() => {
+        emailBtn.innerHTML = "✉ Send Email to FinOps Team";
+        emailBtn.disabled = false;
+      }, 3000);
     } catch(e) {
-      emailBtn.textContent = "✗ Error";
+      emailBtn.innerHTML = "✗ Failed";
       alert("Email error: " + e.message);
-    } finally {
-      setTimeout(() => { emailBtn.textContent = "📧 Send Email"; emailBtn.disabled = false; }, 3000);
+      setTimeout(() => {
+        emailBtn.innerHTML = "✉ Send Email to FinOps Team";
+        emailBtn.disabled = false;
+      }, 2000);
     }
   };
 
