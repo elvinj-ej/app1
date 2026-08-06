@@ -75,6 +75,7 @@ def get_conn():
 
 def init_db():
     with get_conn() as conn:
+        # ── Core tables (always idempotent) ───────────────────────────────────
         conn.execute(
             "CREATE TABLE IF NOT EXISTS workloads ("
             "name           TEXT PRIMARY KEY,"
@@ -128,12 +129,6 @@ def init_db():
             "updated_at      DATETIME DEFAULT (datetime('now')),"
             "PRIMARY KEY (workload, month))"
         )
-        # Schema migration — add columns if upgrading existing DB
-        _ma_cols = {r[1] for r in conn.execute("PRAGMA table_info(marketplace_adjustments)").fetchall()}
-        if "po_number" not in _ma_cols:
-            conn.execute("ALTER TABLE marketplace_adjustments ADD COLUMN po_number TEXT")
-        if "purchaser_name" not in _ma_cols:
-            conn.execute("ALTER TABLE marketplace_adjustments ADD COLUMN purchaser_name TEXT")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS receiving_forecast ("
             "month              TEXT PRIMARY KEY,"
@@ -164,81 +159,97 @@ def init_db():
             "po_number       TEXT,"
             "workload_match  TEXT)"
         )
-
-        # Migrate existing Shared Cost accounts from 'Consumption' → 'Shared'
-        _SHARED_ACCOUNTS = ("AWS Networks", "Billing", "Network F5", "Network Firewall")
+        # Migrations registry — every data-change migration is recorded here and
+        # runs exactly once, so restarts never overwrite user-saved values.
         conn.execute(
-            "UPDATE workloads SET cost_category='Shared' WHERE name IN ({}) AND cost_category='Consumption'".format(
-                ",".join("?" * len(_SHARED_ACCOUNTS))
-            ),
-            _SHARED_ACCOUNTS,
+            "CREATE TABLE IF NOT EXISTS _migrations ("
+            "id         TEXT PRIMARY KEY,"
+            "applied_at DATETIME DEFAULT (datetime('now')))"
         )
 
-        # Migrate workloads that should be 'Other' (grouped line in Run Cost)
-        _OTHER_WORKLOADS = (
-            "Acoustics", "AWS Identity", "AWS Security", "BBTB", "Boomi-Data",
-            "CCI", "CIAM", "CRIP", "CSP Sandbox", "Dexter", "Disabled", "DNR",
-            "Identity", "Magento", "MRA", "Quick Suite",
-            "R_D", "Rehosted Apps", "Rehosted DBs", "Sandbox", "SFHC Miterra",
-            "Sharefile", "SimpleMDG", "SBOX", "Trackwise",
-        )
-        conn.execute(
-            "UPDATE workloads SET cost_category='Other' WHERE name IN ({})".format(
-                ",".join("?" * len(_OTHER_WORKLOADS))
-            ),
-            _OTHER_WORKLOADS,
-        )
-
-        # Migrate Model Gateway to Project
-        conn.execute("UPDATE workloads SET cost_category='Project' WHERE name='Model Gateway'")
-
-        # Ensure DPX MCP and Olingo Odata remain Consumption
-        conn.execute("UPDATE workloads SET cost_category='Consumption' WHERE name IN ('DPX MCP', 'Olingo Odata')")
-
-        # FY27 project budgets — only update if still at the original placeholder seed values.
-        # This prevents resetting user edits on every app restart.
-        conn.execute(
-            "UPDATE workloads SET budget_monthly=? WHERE name='MES' AND ABS(budget_monthly - 26000.0) < 1",
-            (round(560000 / 12, 2),),
-        )
-        # CNA: Jul–Dec 2026 = $35,700/mo  |  Jan–Jun 2027 = $64,000/mo
-        # Seed to 35700; the email endpoint picks the right period at send-time.
-        conn.execute(
-            "UPDATE workloads SET budget_monthly=35700.0 WHERE name='CNA' AND (budget_monthly < 36000 OR ABS(budget_monthly - 80000.0) < 1)",
-        )
-
-        # ADA group: shared annual budget of USD 244,000 ($20,333/mo total).
-        # No individual workload budgets — tracked as a group against the total.
-        for _ada_name in ("Clark AI", "DataInsights", "Sonar", "Model Gateway"):
-            conn.execute(
-                "UPDATE workloads SET domain='ADA', budget_manager='Jennifer Ilaya', budget_monthly=0 WHERE name=?",
-                (_ada_name,),
-            )
-
-        # Schema migrations for existing databases
-        existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
-        if "domain" not in existing_cols:
-            # Old schema used 'outcomegroup' — add domain column and copy data
+        # ── Column additions (gated on absence — safe to repeat) ─────────────
+        _wl_cols = {r[1] for r in conn.execute("PRAGMA table_info(workloads)").fetchall()}
+        if "domain" not in _wl_cols:
             conn.execute("ALTER TABLE workloads ADD COLUMN domain TEXT")
-            if "outcomegroup" in existing_cols:
+            if "outcomegroup" in _wl_cols:
                 conn.execute("UPDATE workloads SET domain = outcomegroup WHERE domain IS NULL")
-        if "cost_category" not in existing_cols:
+        if "cost_category" not in _wl_cols:
             conn.execute("ALTER TABLE workloads ADD COLUMN cost_category TEXT NOT NULL DEFAULT 'Consumption'")
-        if "sort_order" not in existing_cols:
+        if "sort_order" not in _wl_cols:
             conn.execute("ALTER TABLE workloads ADD COLUMN sort_order INTEGER DEFAULT 99")
-        if "cur_tag" not in existing_cols:
+        if "cur_tag" not in _wl_cols:
             conn.execute("ALTER TABLE workloads ADD COLUMN cur_tag TEXT")
 
-        # monthly_inputs migration: add forecast_run / forecast_project if missing
-        mi_cols = {r[1] for r in conn.execute("PRAGMA table_info(monthly_inputs)").fetchall()}
-        if "forecast_run" not in mi_cols:
+        _ma_cols = {r[1] for r in conn.execute("PRAGMA table_info(marketplace_adjustments)").fetchall()}
+        if "po_number" not in _ma_cols:
+            conn.execute("ALTER TABLE marketplace_adjustments ADD COLUMN po_number TEXT")
+        if "purchaser_name" not in _ma_cols:
+            conn.execute("ALTER TABLE marketplace_adjustments ADD COLUMN purchaser_name TEXT")
+
+        _mi_cols = {r[1] for r in conn.execute("PRAGMA table_info(monthly_inputs)").fetchall()}
+        if "forecast_run" not in _mi_cols:
             conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_run REAL")
-        if "forecast_project" not in mi_cols:
+        if "forecast_project" not in _mi_cols:
             conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_project REAL")
 
-        # Seed FY27 forecasts (INSERT OR IGNORE — user edits via the inputs bar are preserved)
-        # Jul–Dec 2026: Run=$305,144  Project=$97,800  (CNA $35.7k, MES $46k, Clark $3k, DataInsights $3.4k, Sonar $9.7k)
-        # Jan–Jun 2027: Run=$305,144  Project=$126,100 (CNA increases to $64k)
+        # ── Helper: run a migration exactly once ──────────────────────────────
+        def _done(mid):
+            return conn.execute("SELECT 1 FROM _migrations WHERE id=?", (mid,)).fetchone() is not None
+
+        def _mark(mid):
+            conn.execute("INSERT OR IGNORE INTO _migrations (id) VALUES (?)", (mid,))
+
+        # ── One-time data migrations ──────────────────────────────────────────
+
+        if not _done("m01_shared_cost_category"):
+            _SHARED = ("AWS Networks", "Billing", "Network F5", "Network Firewall")
+            conn.execute(
+                "UPDATE workloads SET cost_category='Shared' WHERE name IN ({}) AND cost_category='Consumption'".format(
+                    ",".join("?" * len(_SHARED))), _SHARED)
+            _mark("m01_shared_cost_category")
+
+        if not _done("m02_other_cost_category"):
+            _OTHER = (
+                "Acoustics", "AWS Identity", "AWS Security", "BBTB", "Boomi-Data",
+                "CCI", "CIAM", "CRIP", "CSP Sandbox", "Dexter", "Disabled", "DNR",
+                "Identity", "Magento", "MRA", "Quick Suite",
+                "R_D", "Rehosted Apps", "Rehosted DBs", "Sandbox", "SFHC Miterra",
+                "Sharefile", "SimpleMDG", "SBOX", "Trackwise",
+            )
+            conn.execute(
+                "UPDATE workloads SET cost_category='Other' WHERE name IN ({})".format(
+                    ",".join("?" * len(_OTHER))), _OTHER)
+            _mark("m02_other_cost_category")
+
+        if not _done("m03_model_gateway_project"):
+            conn.execute("UPDATE workloads SET cost_category='Project' WHERE name='Model Gateway'")
+            _mark("m03_model_gateway_project")
+
+        if not _done("m04_dpx_olingo_consumption"):
+            conn.execute("UPDATE workloads SET cost_category='Consumption' WHERE name IN ('DPX MCP', 'Olingo Odata')")
+            _mark("m04_dpx_olingo_consumption")
+
+        if not _done("m05_mes_budget_fy27"):
+            conn.execute("UPDATE workloads SET budget_monthly=? WHERE name='MES'", (round(560000 / 12, 2),))
+            _mark("m05_mes_budget_fy27")
+
+        if not _done("m06_cna_budget_fy27"):
+            # Jul–Dec 2026 = $35,700/mo · Jan–Jun 2027 = $64,000/mo
+            # Store the lower period value; email endpoint selects the right amount per month.
+            conn.execute("UPDATE workloads SET budget_monthly=35700.0 WHERE name='CNA'")
+            _mark("m06_cna_budget_fy27")
+
+        if not _done("m07_ada_domain_manager"):
+            for _n in ("Clark AI", "DataInsights", "Sonar", "Model Gateway"):
+                conn.execute(
+                    "UPDATE workloads SET domain='ADA', budget_manager='Jennifer Ilaya', budget_monthly=0 WHERE name=?",
+                    (_n,),
+                )
+            _mark("m07_ada_domain_manager")
+
+        # ── Seed data (INSERT OR IGNORE — never overwrites existing rows) ─────
+
+        # FY27 forecasts
         _FY27_FORECASTS = [
             ("2026-07-01", 305144, 97800),
             ("2026-08-01", 305144, 97800),
@@ -259,7 +270,7 @@ def init_db():
                 (month, fc_run, fc_proj),
             )
 
-        # Seed workloads (INSERT OR IGNORE keeps existing budget edits)
+        # Workloads
         for i, (name, domain, cat, mgr, desc, budget) in enumerate(_SEED_WORKLOADS):
             conn.execute(
                 "INSERT OR IGNORE INTO workloads "
