@@ -90,6 +90,7 @@ table{width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;
       border:1px solid var(--border);border-radius:8px;overflow:hidden}
 table.detail-tbl{table-layout:fixed;width:100%;min-width:880px}
 table.detail-tbl td,table.detail-tbl th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.detail-tbl td.num{white-space:normal;vertical-align:top}
 thead.hd-shared tr{background:var(--col-shared);color:#fff}
 thead.hd-run    tr{background:var(--col-run);color:#fff}
 thead.hd-project tr{background:var(--col-project);color:#fff}
@@ -566,6 +567,14 @@ function switchTab(tab) {
 const fmt = v => v == null ? "—" : "$" + Math.round(v).toLocaleString("en-US");
 const fmtDec = v => v == null ? "—" : "$" + v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
+// Format YYYY-MM-DD → "Jan '26"
+const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtMonth(s) {
+  if (!s) return "—";
+  const [y, m] = s.split("-");
+  return `${MONTHS_SHORT[parseInt(m, 10) - 1]} '${y.slice(2)}`;
+}
+
 function fmtAEST(utcStr) {
   if (!utcStr) return "—";
   // SQLite returns "YYYY-MM-DD HH:MM:SS" in UTC — convert to ISO8601 for Date()
@@ -768,7 +777,7 @@ async function loadRunCost(month) {
     const label = hasAdj
       ? `MKT ${fmt(r.actual_marketplace)} / adj ${fmt(r.marketplace_adjustment)}`
       : `MKT ${fmt(r.actual_marketplace)}`;
-    return `<span class="${cls}" onclick='openMktModal(${JSON.stringify(r)})'>${label}</span>`;
+    return `<div style="margin-top:3px"><span class="${cls}" onclick='openMktModal(${JSON.stringify(r)})'>${label}</span></div>`;
   }
   const aC = r => `<td class="num">${fmt(r.actual)}${mktBadge(r)}</td>`;
 
@@ -2043,8 +2052,8 @@ function renderReceiving(months, fy) {
       : `<div style="font-size:.75rem;color:var(--muted)">None recorded</div>`;
 
     return `<tr data-month="${m.month}">
-      <td style="font-weight:600">${m.month.slice(0,7)}</td>
-      <td style="color:var(--muted)">${m.receiving_month.slice(0,7)}</td>
+      <td style="font-weight:600">${fmtMonth(m.month)}</td>
+      <td style="color:var(--muted)">${fmtMonth(m.receiving_month)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <input type="number" class="rcv-forecast-input" data-month="${m.month}"
@@ -2176,7 +2185,7 @@ async function openInvoiceModal(month, inv) {
   const body     = document.getElementById("rcv-modal-body");
   const emailBtn = document.getElementById("rcv-email-btn");
 
-  title.textContent = `Invoice Detail — ${month.slice(0,7)}`;
+  title.textContent = `Invoice Detail — ${fmtMonth(month)}`;
 
   // Always fetch fresh adj data directly for this month
   let adjs = [];

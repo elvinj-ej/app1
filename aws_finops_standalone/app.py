@@ -1093,7 +1093,9 @@ def api_receiving_send_email(month):
         mkt_adj_total     = abs(sum(float(r["adjustment"]) for r in adjs if float(r["adjustment"]) < 0))
         gap               = total_new_charges - received_forecast - mkt_adj_total
 
-        display_month = month[:7]
+        _MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+        _mp = month.split("-")
+        display_month = f"{_MONTH_NAMES[int(_mp[1])-1]} '{_mp[0][2:]}"
         gap_color     = "#C0392B" if gap > 0 else "#1B7340"
         gap_label     = "Underpaid — update Finance tool" if gap > 0 else "Overpaid / Credit"
         acct_status   = "&#x2705; Validated" if inv.get("validated") else "&#x26A0;&#xFE0F; Not matched"
