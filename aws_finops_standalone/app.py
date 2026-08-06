@@ -21,6 +21,8 @@ import hashlib
 import uuid
 import time
 import logging
+import calendar
+import datetime
 from functools import wraps
 
 from flask import (
@@ -799,6 +801,83 @@ def api_receiving_forecast_save(month):
         )
     log.info(f"Receiving forecast saved: {month} by {session.get('username','')}")
     return jsonify({"ok": True})
+
+
+@app.route("/AWSFinOps/api/receiving/forecast-estimate/<month>", methods=["GET"])
+@login_required
+def api_receiving_forecast_estimate(month):
+    """Auto-calculate received forecast from CUR monthly_expense data with mid-month extrapolation."""
+    with get_conn() as conn:
+        cur_total = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM cur_data WHERE month=? AND category='monthly_expense'",
+            (month,),
+        ).fetchone()[0]
+        # Get the most recent upload that included data for this month
+        upload_row = conn.execute(
+            "SELECT ul.uploaded_at FROM upload_log ul "
+            "WHERE EXISTS (SELECT 1 FROM cur_data cd WHERE cd.month=? AND cd.rowid <= ("
+            "SELECT MAX(cd2.rowid) FROM cur_data cd2 WHERE cd2.month=? "
+            "AND cd2.id <= (SELECT COALESCE(MAX(id),0) FROM cur_data WHERE month=? "
+            "AND id <= COALESCE((SELECT MIN(id) FROM cur_data WHERE rowid > "
+            "(SELECT MAX(rowid) FROM cur_data WHERE month <= ? AND id <= "
+            "(SELECT COALESCE(MAX(id),0) FROM cur_data))),-1)))) "
+            "ORDER BY ul.id DESC LIMIT 1",
+            (month, month, month, month),
+        ).fetchone()
+        # Simpler: just get the latest upload_log entry
+        upload_row = conn.execute(
+            "SELECT uploaded_at FROM upload_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+
+    if cur_total == 0:
+        return jsonify({"estimate": None, "cur_total": 0, "note": "No CUR data for this month."})
+
+    upload_dt = None
+    if upload_row and upload_row[0]:
+        try:
+            upload_dt = datetime.datetime.fromisoformat(upload_row[0].replace("Z", "+00:00"))
+        except Exception:
+            try:
+                upload_dt = datetime.datetime.strptime(upload_row[0][:19], "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                upload_dt = None
+
+    try:
+        year, mon, _ = month.split("-")
+        year, mon = int(year), int(mon)
+    except Exception:
+        return jsonify({"estimate": None, "error": "Invalid month format"}), 400
+
+    days_in_month = calendar.monthrange(year, mon)[1]
+
+    if upload_dt and upload_dt.year == year and upload_dt.month == mon:
+        # Mid-month upload — extrapolate
+        days_elapsed = upload_dt.day
+        if days_elapsed < days_in_month:
+            estimate = round(cur_total * days_in_month / days_elapsed, 2)
+            note = (f"CUR data covers {days_elapsed} of {days_in_month} days "
+                    f"(uploaded {upload_dt.strftime('%d %b')}). "
+                    f"Extrapolated: ${cur_total:,.2f} × {days_in_month}/{days_elapsed} = ${estimate:,.2f}")
+            return jsonify({
+                "estimate": estimate,
+                "cur_total": round(cur_total, 2),
+                "days_elapsed": days_elapsed,
+                "total_days": days_in_month,
+                "is_extrapolated": True,
+                "note": note,
+            })
+
+    # Full month data — use actual
+    estimate = round(cur_total, 2)
+    note = f"Full month CUR data available. Total monthly expense: ${estimate:,.2f}"
+    return jsonify({
+        "estimate": estimate,
+        "cur_total": estimate,
+        "days_elapsed": days_in_month,
+        "total_days": days_in_month,
+        "is_extrapolated": False,
+        "note": note,
+    })
 
 
 # ── API: receiving — invoice upload ───────────────────────────────────────────

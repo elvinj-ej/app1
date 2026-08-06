@@ -427,8 +427,8 @@ input[type=file]{display:none}
 <div class="tab-panel" id="tab-receiving">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div>
-      <h3 style="font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:4px">Marketplace Receiving</h3>
-      <p style="font-size:.82rem;color:var(--muted)">Monthly receiving process for AWS Marketplace purchases — upload Telstra invoice PDF to validate account, extract marketplace line items, and calculate gap vs received forecast.</p>
+      <h3 style="font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:4px">Finance Receiving</h3>
+      <p style="font-size:.82rem;color:var(--muted)">Monthly Accounts receiving process for AWS invoices — upload Telstra invoice PDF to validate account, extract marketplace line items, and calculate gap vs received forecast.</p>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <label style="font-size:.82rem;font-weight:600;color:var(--muted)">Financial Year</label>
@@ -447,7 +447,7 @@ input[type=file]{display:none}
 <!-- ═══ RECEIVING — invoice detail modal ════════════════════════════════════ -->
 <div class="modal-bg" id="rcv-modal">
   <div class="modal" style="max-width:760px;width:95vw">
-    <h3 id="rcv-modal-title">Invoice Detail</h3>
+    <h3 id="rcv-modal-title">Finance Receiving — Invoice Detail</h3>
     <div id="rcv-modal-body"></div>
     <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;align-items:center">
       <button class="btn btn-secondary" id="rcv-modal-close" style="font-size:.82rem">Close</button>
@@ -2061,8 +2061,10 @@ function renderReceiving(months, fy) {
             placeholder="Enter amount"
             style="width:120px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:.82rem;background:var(--surface)">
           <button class="btn btn-sm rcv-forecast-save" data-month="${m.month}" style="padding:4px 10px;font-size:.75rem">Save</button>
+          <button class="btn btn-sm rcv-forecast-auto" data-month="${m.month}" title="Auto-calculate from CUR data"
+            style="padding:4px 8px;font-size:.74rem;background:var(--navy);color:#fff;border:none;border-radius:4px;cursor:pointer">⚡ Auto</button>
         </div>
-        ${m.forecast_note ? `<div style="font-size:.74rem;color:var(--muted);margin-top:3px">${m.forecast_note}</div>` : ""}
+        <div class="rcv-forecast-note" data-month="${m.month}" style="font-size:.74rem;color:var(--muted);margin-top:3px">${m.forecast_note || ""}</div>
       </td>
       <td>
         ${adjList}
@@ -2143,6 +2145,34 @@ function renderReceiving(months, fy) {
       } catch(e) {
         btn.textContent = "✗";
         alert("Error: " + e.message);
+      }
+    });
+  });
+
+  wrap.querySelectorAll(".rcv-forecast-auto").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const month = btn.dataset.month;
+      const input = wrap.querySelector(`.rcv-forecast-input[data-month="${month}"]`);
+      const noteEl = wrap.querySelector(`.rcv-forecast-note[data-month="${month}"]`);
+      btn.textContent = "…";
+      btn.disabled = true;
+      try {
+        const r = await fetch(`/AWSFinOps/api/receiving/forecast-estimate/${month}`);
+        const data = await r.json();
+        if (data.estimate == null) {
+          noteEl.textContent = data.note || "No CUR data available for this month.";
+          btn.textContent = "⚡ Auto";
+          btn.disabled = false;
+          return;
+        }
+        input.value = data.estimate;
+        noteEl.innerHTML = `<span style="color:#1B7340">⚡ ${data.note}</span>`;
+        btn.textContent = "⚡ Auto";
+        btn.disabled = false;
+      } catch(e) {
+        noteEl.textContent = "Error: " + e.message;
+        btn.textContent = "⚡ Auto";
+        btn.disabled = false;
       }
     });
   });
