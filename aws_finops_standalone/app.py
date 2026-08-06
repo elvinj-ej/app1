@@ -910,6 +910,102 @@ def api_receiving_invoice_upload(month):
             pass
 
 
+@app.route("/AWSFinOps/api/receiving/invoice/<month>/raw-text", methods=["GET"])
+@login_required
+def api_receiving_invoice_raw(month):
+    """Debug endpoint — returns raw text extracted from the stored PDF."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT pdf_blob FROM invoice_uploads WHERE month=? ORDER BY id DESC LIMIT 1", (month,)
+        ).fetchone()
+    if not row or not row["pdf_blob"]:
+        return jsonify({"error": "No invoice found."}), 404
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(row["pdf_blob"])
+        tmp = f.name
+    try:
+        from aws_invoice_parser import _extract_text
+        text = _extract_text(tmp)
+        return jsonify({"text": text, "length": len(text)})
+    finally:
+        try: os.remove(tmp)
+        except Exception: pass
+
+
+@app.route("/AWSFinOps/api/receiving/invoice/<month>/reparse", methods=["POST"])
+@login_required
+def api_receiving_invoice_reparse(month):
+    """Re-run the parser on the stored PDF blob and update line items."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, pdf_blob, filename FROM invoice_uploads WHERE month=? ORDER BY id DESC LIMIT 1", (month,)
+        ).fetchone()
+    if not row or not row["pdf_blob"]:
+        return jsonify({"error": "No invoice found."}), 404
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(row["pdf_blob"])
+        tmp = f.name
+    try:
+        from aws_invoice_parser import parse_invoice
+        parsed = parse_invoice(tmp)
+
+        with get_conn() as conn:
+            adj_rows = conn.execute(
+                "SELECT workload, adjustment, note FROM marketplace_adjustments WHERE month=?", (month,)
+            ).fetchall()
+        adj_map = {r["workload"]: {"adj": float(r["adjustment"]), "note": r["note"] or ""} for r in adj_rows}
+        adj_items = [{"workload": k, **v} for k, v in adj_map.items() if v["adj"] != 0]
+
+        mkt_lines = parsed["marketplace_lines"]
+        used = set()
+        for line in mkt_lines:
+            best, best_delta = None, 1e9
+            for item in adj_items:
+                if item["workload"] in used: continue
+                delta = abs(line["amount"] - abs(item["adj"]))
+                if delta < best_delta:
+                    best_delta = delta
+                    best = item
+            if best and best_delta < max(50, line["amount"] * 0.05):
+                line["workload_match"] = best["workload"]
+                used.add(best["workload"])
+            else:
+                line["workload_match"] = ""
+
+        inv_id = row["id"]
+        with get_conn() as conn:
+            conn.execute("DELETE FROM invoice_line_items WHERE invoice_id=?", (inv_id,))
+            conn.execute(
+                "UPDATE invoice_uploads SET account_number=?, validated=?, total_new_charges=? WHERE id=?",
+                (parsed["account_number"], 1 if parsed["validated"] else 0,
+                 parsed["total_new_charges"], inv_id),
+            )
+            for line in parsed["all_lines"]:
+                conn.execute(
+                    "INSERT INTO invoice_line_items (invoice_id, month, line_type, description, amount, po_number, workload_match) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (inv_id, month, line["line_type"], line["description"],
+                     line["amount"], line.get("po_number", ""), line.get("workload_match", "")),
+                )
+
+        log.info(f"Invoice reparsed for {month}")
+        return jsonify({
+            "ok": True,
+            "account_number": parsed["account_number"],
+            "validated": parsed["validated"],
+            "total_new_charges": parsed["total_new_charges"],
+            "marketplace_lines": mkt_lines,
+            "all_lines": parsed["all_lines"],
+            "raw_text": parsed["raw_text"],
+        })
+    finally:
+        try: os.remove(tmp)
+        except Exception: pass
+
+
 @app.route("/AWSFinOps/api/receiving/invoice/<month>/pdf", methods=["GET"])
 @login_required
 def api_receiving_invoice_pdf(month):

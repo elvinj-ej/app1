@@ -448,10 +448,13 @@ input[type=file]{display:none}
   <div class="modal" style="max-width:760px;width:95vw">
     <h3 id="rcv-modal-title">Invoice Detail</h3>
     <div id="rcv-modal-body"></div>
-    <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end">
+    <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-secondary" id="rcv-debug-btn" style="font-size:.78rem">🔍 Debug PDF Text</button>
+      <button class="btn btn-secondary" id="rcv-reparse-btn" style="font-size:.78rem">↺ Re-parse</button>
       <button class="btn" id="rcv-email-btn" style="background:var(--navy)">📧 Send Email</button>
       <button class="btn btn-secondary" id="rcv-modal-close">Close</button>
     </div>
+    <div id="rcv-debug-text" style="display:none;margin-top:12px;background:#1a1a2e;color:#a8ff78;font-family:monospace;font-size:.72rem;padding:12px;border-radius:6px;max-height:300px;overflow-y:auto;white-space:pre-wrap"></div>
   </div>
 </div>
 
@@ -2229,6 +2232,46 @@ function openInvoiceModal(month, inv) {
         <tbody>${allLinesHtml}</tbody>
       </table>
     </div>`;
+
+  const debugBtn  = document.getElementById("rcv-debug-btn");
+  const reparseBtn = document.getElementById("rcv-reparse-btn");
+  const debugText  = document.getElementById("rcv-debug-text");
+
+  debugBtn.onclick = async () => {
+    debugText.style.display = debugText.style.display === "none" ? "block" : "none";
+    if (debugText.textContent) return;
+    debugText.textContent = "Loading…";
+    try {
+      const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}/raw-text`);
+      const d = await r.json();
+      debugText.textContent = d.text || d.error || "No text extracted";
+    } catch(e) {
+      debugText.textContent = "Error: " + e.message;
+    }
+  };
+
+  reparseBtn.onclick = async () => {
+    reparseBtn.textContent = "Parsing…";
+    reparseBtn.disabled = true;
+    debugText.textContent = "";
+    debugText.style.display = "none";
+    try {
+      const r = await fetch(`/AWSFinOps/api/receiving/invoice/${month}/reparse`, {method:"POST"});
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Reparse failed");
+      // Reopen modal with fresh data
+      openInvoiceModal(month, {
+        filename: inv.filename, account_number: d.account_number, validated: d.validated,
+        total_new_charges: d.total_new_charges, marketplace_lines: d.marketplace_lines,
+        all_lines: d.all_lines,
+      });
+      loadReceiving();
+    } catch(e) {
+      alert("Reparse error: " + e.message);
+      reparseBtn.textContent = "↺ Re-parse";
+      reparseBtn.disabled = false;
+    }
+  };
 
   emailBtn.onclick = async () => {
     if (!confirm(`Send receiving email to global-aws-finops@cochlear.com for ${month.slice(0,7)}?`)) return;
