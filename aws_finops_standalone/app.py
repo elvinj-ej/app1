@@ -1221,135 +1221,124 @@ def api_receiving_send_email(month):
         if not mkt_rows_html:
             mkt_rows_html = '<tr><td colspan="5" style="padding:14px;text-align:center;color:#888">No marketplace purchases recorded for this month</td></tr>'
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#F4F6FA;font-family:'Segoe UI',Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FA;padding:32px 0">
-  <tr><td align="center">
-    <table width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+        inv_acct   = inv.get("account_number") or ""
+        inv_fname  = inv.get("filename") or ""
+        gap_str    = fmtd(gap)
+        tnc_str    = fmtd(total_new_charges)
+        rf_str     = fmtd(received_forecast)
+        mat_str    = fmtd(mkt_adj_total)
 
-      <!-- Header -->
-      <tr><td style="background:linear-gradient(135deg,#1A2744 0%,#2B3F6B 100%);padding:28px 36px">
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td>
-              <div style="color:#F0C040;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">AWS FinOps</div>
-              <div style="color:#fff;font-size:22px;font-weight:700">Marketplace Receiving Summary</div>
-              <div style="color:#A8B8D8;font-size:13px;margin-top:4px">Consumption Month: {display_month}</div>
-            </td>
-            <td align="right" style="color:#F0C040;font-size:32px">&#128230;</td>
-          </tr>
-        </table>
-      </td></tr>
+        html_body = (
+            "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head>"
+            "<body style=\"margin:0;padding:0;background-color:#F4F6FA;font-family:Arial,Helvetica,sans-serif\">"
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#F4F6FA\" style=\"background-color:#F4F6FA;padding:32px 0\">"
+            "<tr><td align=\"center\">"
+            "<table width=\"620\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#ffffff\" style=\"background-color:#ffffff;border:1px solid #DDE4EF\">"
 
-      <!-- Account badge -->
-      <tr><td style="padding:20px 36px 0">
-        <table cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="background:#EBF5EB;border:1px solid #A5D6A7;border-radius:6px;padding:8px 14px;font-size:12px;color:#1B7340;font-weight:600">
-              {acct_status} &nbsp;·&nbsp; Account {inv['account_number']}
-            </td>
-            <td width="12"></td>
-            <td style="font-size:12px;color:#666">Invoice: <strong>{inv['filename']}</strong></td>
-          </tr>
-        </table>
-      </td></tr>
+            # Header
+            "<tr><td bgcolor=\"#1A2744\" style=\"background-color:#1A2744;background-image:linear-gradient(135deg,#1A2744 0%,#2B3F6B 100%);padding:32px 36px\">"
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr valign=\"top\">"
+            "<td>"
+            "<p style=\"margin:0 0 8px 0;color:#F0C040;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif\">AWS FinOps &nbsp;&middot;&nbsp; Marketplace &nbsp;&middot;&nbsp; Monthly Report</p>"
+            "<p style=\"margin:0 0 6px 0;color:#ffffff;font-size:28px;font-weight:bold;line-height:1.1;font-family:Arial,Helvetica,sans-serif\">Marketplace Receiving Summary</p>"
+            "<p style=\"margin:0 0 14px 0;color:#A8B8D8;font-size:13px;font-family:Arial,Helvetica,sans-serif\">Telstra invoice reconciliation</p>"
+            "<table cellpadding=\"0\" cellspacing=\"0\"><tr><td bgcolor=\"#304050\" style=\"background-color:#304050;padding:5px 14px\">"
+            "<p style=\"margin:0;color:#ffffff;font-size:12px;font-weight:bold;font-family:Arial,Helvetica,sans-serif\">Consumption Month: " + display_month + "</p>"
+            "</td></tr></table>"
+            "</td>"
+            "<td width=\"60\" align=\"right\" style=\"font-size:48px;color:#F0C040\">&#128230;</td>"
+            "</tr></table>"
+            "</td></tr>"
 
-      <!-- Summary cards -->
-      <tr><td style="padding:20px 36px">
-        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:10px 0">
-          <tr>
-            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px;width:33%">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Total New Charges</div>
-              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(total_new_charges)}</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">From invoice excl. GST</div>
-            </td>
-            <td width="10"></td>
-            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px;width:33%">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Received Forecast</div>
-              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(received_forecast)}</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">Pre-invoice estimate</div>
-            </td>
-            <td width="10"></td>
-            <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px;width:33%">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Marketplace (PO)</div>
-              <div style="font-size:20px;font-weight:700;color:#1A2744">{fmtd(mkt_adj_total)}</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">Separate PO purchases</div>
-            </td>
-          </tr>
-        </table>
-      </td></tr>
+            # Account badge
+            "<tr><td style=\"padding:20px 36px 0\">"
+            "<table cellpadding=\"0\" cellspacing=\"0\"><tr>"
+            "<td bgcolor=\"#EBF5EB\" style=\"background-color:#EBF5EB;border:1px solid #A5D6A7;padding:8px 14px\">"
+            "<p style=\"margin:0;font-size:12px;color:#1B7340;font-weight:bold;font-family:Arial,Helvetica,sans-serif\">" + acct_status + " &nbsp;&middot;&nbsp; Account " + inv_acct + "</p>"
+            "</td>"
+            "<td width=\"12\"></td>"
+            "<td style=\"font-size:12px;color:#666666;font-family:Arial,Helvetica,sans-serif\">Invoice: <strong>" + inv_fname + "</strong></td>"
+            "</tr></table>"
+            "</td></tr>"
 
-      <!-- Gap -->
-      <tr><td style="padding:0 36px 20px">
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="background:{gap_color};border-radius:8px;padding:16px 20px">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td>
-                    <div style="color:rgba(255,255,255,.8);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Gap Amount</div>
-                    <div style="color:#fff;font-size:26px;font-weight:700;margin-top:2px">{fmtd(gap)}</div>
-                    <div style="color:rgba(255,255,255,.75);font-size:11px;margin-top:4px">{gap_label}</div>
-                  </td>
-                  <td align="right" style="color:rgba(255,255,255,.35);font-size:48px">&#9651;</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </td></tr>
+            # KPI cards
+            "<tr><td style=\"padding:20px 36px\">"
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>"
+            "<td bgcolor=\"#F8FAFE\" style=\"background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%\">"
+            "<p style=\"margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif\">Total New Charges</p>"
+            "<p style=\"margin:0 0 3px 0;font-size:20px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif\">" + tnc_str + "</p>"
+            "<p style=\"margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif\">From invoice excl. GST</p>"
+            "</td>"
+            "<td width=\"8\"></td>"
+            "<td bgcolor=\"#F8FAFE\" style=\"background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%\">"
+            "<p style=\"margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif\">Received Forecast</p>"
+            "<p style=\"margin:0 0 3px 0;font-size:20px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif\">" + rf_str + "</p>"
+            "<p style=\"margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif\">Pre-invoice estimate</p>"
+            "</td>"
+            "<td width=\"8\"></td>"
+            "<td bgcolor=\"#F8FAFE\" style=\"background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%\">"
+            "<p style=\"margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif\">Marketplace (PO)</p>"
+            "<p style=\"margin:0 0 3px 0;font-size:20px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif\">" + mat_str + "</p>"
+            "<p style=\"margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif\">Separate PO purchases</p>"
+            "</td>"
+            "</tr></table>"
+            "</td></tr>"
 
-      <!-- Formula note -->
-      <tr><td style="padding:0 36px 20px">
-        <div style="background:#FFFBEB;border:1px solid #F0C040;border-radius:6px;padding:10px 14px;font-size:12px;color:#6B5200">
-          <strong>Gap formula:</strong> Total New Charges &minus; Received Forecast &minus; Marketplace (PO) =
-          <strong>{fmtd(total_new_charges)} &minus; {fmtd(received_forecast)} &minus; {fmtd(mkt_adj_total)} = {fmtd(gap)}</strong>
-        </div>
-      </td></tr>
+            # Gap
+            "<tr><td style=\"padding:0 36px 20px\">"
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>"
+            "<td bgcolor=\"" + gap_color + "\" style=\"background-color:" + gap_color + ";padding:18px 22px\">"
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr valign=\"middle\">"
+            "<td>"
+            "<p style=\"margin:0 0 2px 0;color:#dddddd;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;font-family:Arial,Helvetica,sans-serif\">Gap Amount</p>"
+            "<p style=\"margin:0 0 3px 0;color:#ffffff;font-size:26px;font-weight:bold;font-family:Arial,Helvetica,sans-serif\">" + gap_str + "</p>"
+            "<p style=\"margin:0;color:#dddddd;font-size:11px;font-family:Arial,Helvetica,sans-serif\">" + gap_label + "</p>"
+            "</td>"
+            "<td align=\"right\" width=\"50\" style=\"color:#ffffff;font-size:40px;font-family:Arial,Helvetica,sans-serif\">&#9651;</td>"
+            "</tr></table>"
+            "</td></tr></table>"
+            "</td></tr>"
 
-      <!-- Marketplace table -->
-      <tr><td style="padding:0 36px 28px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;margin-bottom:10px">
-          Marketplace PO Purchases
-        </div>
-        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF;border-radius:8px;overflow:hidden">
-          <thead>
-            <tr style="background:#F4F6FA">
-              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Workload</th>
-              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">PO Number</th>
-              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Purchaser</th>
-              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Description</th>
-              <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {mkt_rows_html}
-            <tr style="background:#F8FAFE">
-              <td colspan="4" style="padding:10px 14px;font-weight:700;font-size:12px">Total</td>
-              <td style="padding:10px 14px;text-align:right;font-weight:700;font-size:13px;color:#1A2744">{fmtd(mkt_adj_total)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </td></tr>
+            # Formula note
+            "<tr><td style=\"padding:0 36px 20px\">"
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>"
+            "<td bgcolor=\"#FFFBEB\" style=\"background-color:#FFFBEB;border:1px solid #F0C040;padding:10px 14px\">"
+            "<p style=\"margin:0;font-size:12px;color:#6B5200;font-family:Arial,Helvetica,sans-serif\">"
+            "<strong>Gap formula:</strong> Total New Charges &minus; Received Forecast &minus; Marketplace (PO) = "
+            "<strong>" + tnc_str + " &minus; " + rf_str + " &minus; " + mat_str + " = " + gap_str + "</strong>"
+            "</p>"
+            "</td></tr></table>"
+            "</td></tr>"
 
-      <!-- Footer -->
-      <tr><td style="background:#F4F6FA;border-top:1px solid #DDE4EF;padding:18px 36px">
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="font-size:11px;color:#888">
-              Generated by <strong>AWS FinOps Tracker</strong> &nbsp;·&nbsp; {display_month} &nbsp;·&nbsp;
-              Invoice attached as PDF
-            </td>
-          </tr>
-        </table>
-      </td></tr>
+            # Marketplace table
+            "<tr><td style=\"padding:0 36px 28px\">"
+            "<p style=\"margin:0 0 10px 0;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif\">Marketplace PO Purchases &mdash; " + display_month + "</p>"
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1px solid #DDE4EF\">"
+            "<thead><tr bgcolor=\"#F4F6FA\" style=\"background-color:#F4F6FA\">"
+            "<th align=\"left\" style=\"padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF\">Workload</th>"
+            "<th align=\"left\" style=\"padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF\">PO Number</th>"
+            "<th align=\"left\" style=\"padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF\">Purchaser</th>"
+            "<th align=\"left\" style=\"padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF\">Description</th>"
+            "<th align=\"right\" style=\"padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF\">Amount</th>"
+            "</tr></thead>"
+            "<tbody>" + mkt_rows_html + "</tbody>"
+            "<tfoot><tr bgcolor=\"#F8FAFE\" style=\"background-color:#F8FAFE\">"
+            "<td colspan=\"4\" style=\"padding:10px 14px;font-weight:bold;font-size:12px;font-family:Arial,Helvetica,sans-serif\">Total</td>"
+            "<td align=\"right\" style=\"padding:10px 14px;font-weight:bold;font-size:13px;color:#1A2744;font-family:Arial,Helvetica,sans-serif\">" + mat_str + "</td>"
+            "</tr></tfoot>"
+            "</table>"
+            "</td></tr>"
 
-    </table>
-  </td></tr>
-</table>
-</body></html>"""
+            # Footer
+            "<tr><td bgcolor=\"#F4F6FA\" style=\"background-color:#F4F6FA;border-top:1px solid #DDE4EF;padding:18px 36px\">"
+            "<p style=\"margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif\">"
+            "Generated by <strong>AWS FinOps Tracker</strong> &nbsp;&middot;&nbsp; " + display_month + " &nbsp;&middot;&nbsp; Invoice attached as PDF"
+            "</p>"
+            "</td></tr>"
+
+            "</table></td></tr></table>"
+            "</body></html>"
+        )
 
         smtp_host = os.environ.get("SMTP_HOST", "smtp.cochlear.com")
         smtp_port = int(os.environ.get("SMTP_PORT", "25"))
@@ -1530,13 +1519,13 @@ def api_project_email(month, workload_key):
                 )
             trend_html = (
                 '<tr><td style="padding:0 36px 20px">'
-                '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;margin-bottom:10px">Last 3 Months Trend</div>'
-                '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF;border-radius:8px;overflow:hidden">'
-                '<thead><tr style="background:#F4F6FA">'
-                '<th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Month</th>'
-                '<th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Actuals</th>'
-                '<th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Marketplace</th>'
-                '<th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">' + trend_col_hdr + '</th>'
+                '<p style="margin:0 0 10px 0;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">Last 3 Months Trend</p>'
+                '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF">'
+                '<thead><tr bgcolor="#F4F6FA" style="background-color:#F4F6FA">'
+                '<th align="left" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Month</th>'
+                '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Actuals</th>'
+                '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Marketplace</th>'
+                '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">' + trend_col_hdr + '</th>'
                 '</tr></thead>'
                 '<tbody>' + trend_rows + '</tbody>'
                 '</table>'
@@ -1577,30 +1566,34 @@ def api_project_email(month, workload_key):
                         '</tr>'
                     )
                 rows_html = "".join(_ada_row(r) for r in ada_wl_rows)
-                ada_breakdown_html = f"""
-      <tr><td style="padding:0 36px 20px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2E7D32;margin-bottom:10px">ADA Workload Breakdown</div>
-        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #A5D6A7;border-radius:8px;overflow:hidden">
-          <thead><tr style="background:#E8F5E9">
-            <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Workload</th>
-            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Expense</th>
-            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Marketplace</th>
-            <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px">Total Actual</th>
-          </tr></thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-      </td></tr>"""
+                ada_breakdown_html = (
+                    '<tr><td style="padding:0 36px 20px">'
+                    '<p style="margin:0 0 10px 0;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;color:#2E7D32;font-family:Arial,Helvetica,sans-serif">ADA Workload Breakdown</p>'
+                    '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #A5D6A7">'
+                    '<thead><tr bgcolor="#E8F5E9" style="background-color:#E8F5E9">'
+                    '<th align="left" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #A5D6A7">Workload</th>'
+                    '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #A5D6A7">Expense</th>'
+                    '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #A5D6A7">Marketplace</th>'
+                    '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#2E7D32;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #A5D6A7">Total Actual</th>'
+                    '</tr></thead>'
+                    '<tbody>' + rows_html + '</tbody>'
+                    '</table>'
+                    '</td></tr>'
+                )
 
         # ── shared alloc note for MES/CNA ─────────────────────────────────────
         shared_note_html = ""
         if not is_ada and cur["shared"] > 0:
             shared_note_html = (
                 '<tr><td style="padding:0 36px 20px">'
-                '<div style="background:#EEF2FF;border:1px solid #C5CAE9;border-radius:6px;padding:10px 14px;font-size:12px;color:#283593">'
+                '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
+                '<td bgcolor="#EEF2FF" style="background-color:#EEF2FF;border:1px solid #C5CAE9;padding:10px 14px">'
+                '<p style="margin:0;font-size:12px;color:#283593;font-family:Arial,Helvetica,sans-serif">'
                 '<strong>Total Cross Charge Amount includes shared cost allocation:</strong> '
                 'Actuals ' + fmtd(cur["actual"]) + ' + Shared Alloc ' + fmtd(cur["shared"]) + ' = Total Cross Charge ' + fmtd(cur["finops"]) +
-                '<span style="color:#666;font-size:11px;margin-left:6px">(Shared pool distributed proportionally across all Run &amp; Project workloads)</span>'
-                '</div>'
+                ' <span style="color:#555555;font-size:11px">(Shared pool distributed proportionally across all Run &amp; Project workloads)</span>'
+                '</p>'
+                '</td></tr></table>'
                 '</td></tr>'
             )
 
@@ -1622,10 +1615,10 @@ def api_project_email(month, workload_key):
         finops_row_html = "" if is_ada else (
             '<tr><td style="padding:0 36px 16px">'
             '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
-            '<td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">'
-            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Total Cross Charge Amount</div>'
-            '<div style="font-size:20px;font-weight:700;color:#1A2744">' + fmtd(cur["finops"]) + '</div>'
-            '<div style="font-size:11px;color:#888;margin-top:2px">Actuals + shared cost allocation + Telstra diff</div>'
+            '<td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px">'
+            '<p style="margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif">Total Cross Charge Amount</p>'
+            '<p style="margin:0 0 3px 0;font-size:22px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif">' + fmtd(cur["finops"]) + '</p>'
+            '<p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">Actuals + shared cost allocation + Telstra diff</p>'
             '</td></tr></table></td></tr>'
         )
         cur_actual_str    = fmtd(cur["actual"])
@@ -1633,92 +1626,102 @@ def api_project_email(month, workload_key):
         dev_str           = fmts(deviation)
         mkt_adj_total_str = fmtd(mkt_adj_total)
 
+        # Solid-colour fallbacks for email clients that strip gradients/rgba
+        hdr_bg_solid  = "#1B5E20" if is_ada else "#1A2744"
+        dev_txt_light = "#CCDDCC" if (deviation or 0) <= 0 else "#FFCCCC"
+        dev_txt_white = "#FFFFFF"
+
         html_body = (
 """<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#F4F6FA;font-family:'Segoe UI',Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FA;padding:32px 0">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#F4F6FA;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F4F6FA" style="background-color:#F4F6FA;padding:32px 0">
   <tr><td align="center">
-    <table width="660" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
-      <tr><td style="background:""" + hdr_grad + """;padding:36px 40px">
-        <table width="100%" cellpadding="0" cellspacing="0"><tr>
+    <table width="620" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #DDE4EF">
+      <!-- ── HEADER ── -->
+      <tr><td bgcolor=\"""" + hdr_bg_solid + """\" style="background-color:""" + hdr_bg_solid + """;background-image:""" + hdr_grad + """;padding:32px 36px">
+        <table width="100%" cellpadding="0" cellspacing="0"><tr valign="top">
           <td>
-            <div style="color:#F0C040;font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">AWS FinOps &middot; """ + workload_key + """ &middot; Monthly Cost Report</div>
-            <div style="color:#fff;font-size:36px;font-weight:800;line-height:1.15;letter-spacing:-.5px">""" + workload_key + """ Cost Summary</div>
-            <div style="color:rgba(255,255,255,.85);font-size:17px;font-weight:600;margin-top:8px">""" + hdr_sub + """</div>
-            <div style="display:inline-block;margin-top:12px;background:rgba(255,255,255,.15);border-radius:20px;padding:5px 14px;color:rgba(255,255,255,.9);font-size:13px;font-weight:600;letter-spacing:.3px">&#128197; Consumption Month: """ + display_month + """</div>
+            <p style="margin:0 0 8px 0;color:#F0C040;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif">AWS FinOps &nbsp;&middot;&nbsp; """ + workload_key + """ &nbsp;&middot;&nbsp; Monthly Cost Report</p>
+            <p style="margin:0 0 6px 0;color:#ffffff;font-size:34px;font-weight:bold;line-height:1.1;font-family:Arial,Helvetica,sans-serif">""" + workload_key + """ Cost Summary</p>
+            <p style="margin:0 0 14px 0;color:#C8D8C8;font-size:15px;font-weight:bold;font-family:Arial,Helvetica,sans-serif">""" + hdr_sub + """</p>
+            <table cellpadding="0" cellspacing="0"><tr><td bgcolor="#304050" style="background-color:#304050;padding:5px 14px">
+              <p style="margin:0;color:#ffffff;font-size:12px;font-weight:bold;font-family:Arial,Helvetica,sans-serif">Consumption Month: """ + display_month + """</p>
+            </td></tr></table>
           </td>
-          <td align="right" style="color:rgba(255,255,255,.2);font-size:72px;vertical-align:top;padding-top:4px">""" + hdr_icon + """</td>
+          <td width="70" align="right" style="font-size:56px;color:#ffffff;opacity:.25;padding-top:2px">""" + hdr_icon + """</td>
         </tr></table>
       </td></tr>
+      <!-- ── KPI ROW ── -->
       <tr><td style="padding:24px 36px 16px">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
-          <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Total Consumption</div>
-            <div style="font-size:20px;font-weight:700;color:#1A2744">""" + cur_actual_str + """</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">Expense + marketplace actuals</div>
+          <td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%">
+            <p style="margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif">Total Consumption</p>
+            <p style="margin:0 0 3px 0;font-size:22px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif">""" + cur_actual_str + """</p>
+            <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">Expense + marketplace actuals</p>
           </td>
-          <td width="10"></td>
-          <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">Marketplace (non-adjusted)</div>
-            <div style="font-size:20px;font-weight:700;color:#1A2744">""" + cur_mkt_str + """</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">CUR marketplace charges</div>
+          <td width="8"></td>
+          <td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%">
+            <p style="margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif">Marketplace (non-adjusted)</p>
+            <p style="margin:0 0 3px 0;font-size:22px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif">""" + cur_mkt_str + """</p>
+            <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">CUR marketplace charges</p>
           </td>
-          <td width="10"></td>
-          <td style="background:#F8FAFE;border:1px solid #DDE4EF;border-radius:8px;padding:14px 16px">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px">""" + kpi_budget_lbl + """</div>
-            <div style="font-size:20px;font-weight:700;color:#1A2744">""" + forecast_label + """</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">""" + kpi_budget_sub + """</div>
+          <td width="8"></td>
+          <td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%">
+            <p style="margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif">""" + kpi_budget_lbl + """</p>
+            <p style="margin:0 0 3px 0;font-size:22px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif">""" + forecast_label + """</p>
+            <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">""" + kpi_budget_sub + """</p>
           </td>
         </tr></table>
       </td></tr>
       """ + finops_row_html + """
+      <!-- ── DEVIATION ── -->
       <tr><td style="padding:0 36px 16px">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
-          <td style="background:""" + dev_color + """;border-radius:8px;padding:16px 20px">
-            <table width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td bgcolor=\"""" + dev_color + """\" style="background-color:""" + dev_color + """;padding:18px 22px">
+            <table width="100%" cellpadding="0" cellspacing="0"><tr valign="middle">
               <td>
-                <div style="color:rgba(255,255,255,.8);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Deviation</div>
-                <div style="color:#fff;font-size:26px;font-weight:700;margin-top:2px">""" + dev_str + """</div>
-                <div style="color:rgba(255,255,255,.75);font-size:11px;margin-top:4px">""" + dev_label + """</div>
+                <p style="margin:0 0 2px 0;color:#dddddd;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;font-family:Arial,Helvetica,sans-serif">Deviation</p>
+                <p style="margin:0 0 3px 0;color:#ffffff;font-size:28px;font-weight:bold;font-family:Arial,Helvetica,sans-serif">""" + dev_str + """</p>
+                <p style="margin:0;color:#dddddd;font-size:12px;font-family:Arial,Helvetica,sans-serif">""" + dev_label + """</p>
               </td>
-              <td align="right" style="color:rgba(255,255,255,.3);font-size:42px">""" + dev_arrow + """</td>
+              <td align="right" width="50" style="color:#ffffff;font-size:36px;font-family:Arial,Helvetica,sans-serif">""" + dev_arrow + """</td>
             </tr></table>
           </td>
         </tr></table>
       </td></tr>
+      <!-- ── DEVIATION FORMULA ── -->
       <tr><td style="padding:0 36px 20px">
-        <div style="background:#FFFBEB;border:1px solid #F0C040;border-radius:6px;padding:10px 14px;font-size:12px;color:#6B5200">
-          <strong>Deviation formula:</strong> """ + dev_formula + """
-        </div>
+        <table width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td bgcolor="#FFFBEB" style="background-color:#FFFBEB;border:1px solid #F0C040;padding:10px 14px">
+            <p style="margin:0;font-size:12px;color:#6B5200;font-family:Arial,Helvetica,sans-serif"><strong>Deviation formula:</strong> """ + dev_formula + """</p>
+          </td>
+        </tr></table>
       </td></tr>
       """ + shared_note_html + ada_breakdown_html + trend_html + """
+      <!-- ── MARKETPLACE TABLE ── -->
       <tr><td style="padding:0 36px 28px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;margin-bottom:10px">
-          Marketplace PO Purchases &mdash; """ + display_month + """
-        </div>
-        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF;border-radius:8px;overflow:hidden">
-          <thead><tr style="background:#F4F6FA">
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Workload</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">PO Number</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Purchaser</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Description</th>
-            <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px">Amount</th>
-          </tr></thead>
-          <tbody>
-            """ + mkt_rows_html + """
-            <tr style="background:#F8FAFE">
-              <td colspan="4" style="padding:10px 14px;font-weight:700;font-size:12px">Total Marketplace (PO)</td>
-              <td style="padding:10px 14px;text-align:right;font-weight:700;font-size:13px;color:#1A2744">""" + mkt_adj_total_str + """</td>
+        <p style="margin:0 0 10px 0;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">Marketplace PO Purchases &mdash; """ + display_month + """</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF">
+          <tr bgcolor="#F4F6FA" style="background-color:#F4F6FA">
+            <th align="left" style="padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Workload</th>
+            <th align="left" style="padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">PO Number</th>
+            <th align="left" style="padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Purchaser</th>
+            <th align="left" style="padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Description</th>
+            <th align="right" style="padding:10px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Amount</th>
+          </tr>
+          """ + mkt_rows_html + """
+          <tr bgcolor="#F8FAFE" style="background-color:#F8FAFE">
+            <td colspan="4" style="padding:10px 14px;font-weight:bold;font-size:12px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">Total Marketplace (PO)</td>
+            <td align="right" style="padding:10px 14px;font-weight:bold;font-size:13px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">""" + mkt_adj_total_str + """</td>
             </tr>
           </tbody>
         </table>
       </td></tr>
-      <tr><td style="background:#F4F6FA;border-top:1px solid #DDE4EF;padding:18px 36px">
-        <div style="font-size:11px;color:#888">
-          Generated by <strong>AWS FinOps Tracker</strong> &nbsp;&middot;&nbsp; """ + workload_key + """ &nbsp;&middot;&nbsp; """ + display_month + """
-        </div>
+      <!-- ── FOOTER ── -->
+      <tr><td bgcolor="#F4F6FA" style="background-color:#F4F6FA;border-top:1px solid #DDE4EF;padding:16px 36px">
+        <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">Generated by <strong>AWS FinOps Tracker</strong> &nbsp;&middot;&nbsp; """ + workload_key + """ &nbsp;&middot;&nbsp; """ + display_month + """</p>
       </td></tr>
     </table>
   </td></tr>
