@@ -207,6 +207,8 @@ def init_db():
             conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_run REAL")
         if "forecast_project" not in _mi_cols:
             conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_project REAL")
+        if "forecast_ada" not in _mi_cols:
+            conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_ada REAL")
 
         # ── Helper: run a migration exactly once ──────────────────────────────
         def _done(mid):
@@ -262,6 +264,20 @@ def init_db():
                     (_n,),
                 )
             _mark("m07_ada_domain_manager")
+
+        if not _done("m08_forecast_ada_fy27"):
+            # ADA group forecast = USD 244,000 / 12 ≈ 20,333/mo for all FY27 months
+            _ADA_MONTHLY = round(244_000 / 12, 2)
+            for _m in [
+                "2026-07-01","2026-08-01","2026-09-01","2026-10-01","2026-11-01","2026-12-01",
+                "2027-01-01","2027-02-01","2027-03-01","2027-04-01","2027-05-01","2027-06-01",
+            ]:
+                conn.execute(
+                    "INSERT INTO monthly_inputs (month, forecast_ada) VALUES (?,?) "
+                    "ON CONFLICT(month) DO UPDATE SET forecast_ada=COALESCE(forecast_ada, excluded.forecast_ada)",
+                    (_m, _ADA_MONTHLY),
+                )
+            _mark("m08_forecast_ada_fy27")
 
         # ── Seed data (INSERT OR IGNORE — never overwrites existing rows) ─────
 

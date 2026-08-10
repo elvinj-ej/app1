@@ -239,8 +239,12 @@ input[type=file]{display:none}
       <input type="number" id="inp-fc-run" placeholder="e.g. 281175" step="0.01"/>
     </div>
     <div class="inp-group">
-      <label>Forecast — Project</label>
-      <input type="number" id="inp-fc-proj" placeholder="e.g. 65830" step="0.01"/>
+      <label>Forecast — Project X-charge (MES + CNA)</label>
+      <input type="number" id="inp-fc-proj" placeholder="e.g. 62030" step="0.01"/>
+    </div>
+    <div class="inp-group">
+      <label>Forecast — ADA Projects</label>
+      <input type="number" id="inp-fc-ada" placeholder="e.g. 20333" step="0.01"/>
     </div>
     <button class="btn" id="save-inputs-btn">Save</button>
     <span id="save-ok" style="display:none;font-size:.78rem;color:var(--green)">✓ Saved</span>
@@ -248,7 +252,7 @@ input[type=file]{display:none}
 
   <!-- KPI cards row 1 -->
   <div class="kpi-row" id="kpi-row" style="display:none;flex-wrap:nowrap">
-    <div class="kpi" style="border-top:3px solid #2B3752;min-width:0;flex:1">
+    <div class="kpi" style="border-top:3px solid var(--col-run);min-width:0;flex:1">
       <div class="kpi-label">Run Cost</div>
       <div class="kpi-val" id="kpi-run">—</div>
       <div class="kpi-sub">Actual + shared cost allocation</div>
@@ -258,17 +262,26 @@ input[type=file]{display:none}
         <div class="kpi-sub">Incl. Telstra invoice diff</div>
       </div>
     </div>
-    <div class="kpi" style="border-top:3px solid #6A1B9A;min-width:0;flex:1">
-      <div class="kpi-label">Project Cost</div>
+    <div class="kpi" style="border-top:3px solid var(--col-project);min-width:0;flex:1">
+      <div class="kpi-label">Project X-charge (MES + CNA)</div>
       <div class="kpi-val" id="kpi-proj">—</div>
-      <div class="kpi-sub">Actual + shared cost allocation</div>
+      <div class="kpi-sub">Actual + shared alloc + Telstra diff</div>
       <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
-        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Project Cost FinOps Total</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">FinOps Total</div>
         <div class="kpi-val" id="kpi-proj-finops" style="font-size:1.1rem">—</div>
-        <div class="kpi-sub">Incl. Telstra invoice diff</div>
+        <div id="kpi-proj-dev" class="kpi-sub"></div>
       </div>
     </div>
-    <div class="kpi" style="border-top:3px solid #1565C0;min-width:0;flex:1">
+    <div class="kpi" style="border-top:3px solid var(--green);min-width:0;flex:1">
+      <div class="kpi-label">ADA Projects</div>
+      <div class="kpi-val" id="kpi-ada">—</div>
+      <div class="kpi-sub">Clark AI, DataInsights, Sonar, Model Gateway — actual spend only</div>
+      <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">vs ADA Forecast</div>
+        <div id="kpi-ada-dev" class="kpi-sub">—</div>
+      </div>
+    </div>
+    <div class="kpi" style="border-top:3px solid var(--col-shared);min-width:0;flex:1">
       <div class="kpi-label">Shared Cost Pool</div>
       <div class="kpi-val" id="kpi-shared">—</div>
       <div class="kpi-sub">AWS Networks, Billing, Network F5 &amp; Firewall — distributed proportionally to all workloads</div>
@@ -289,8 +302,8 @@ input[type=file]{display:none}
       <div class="kpi-sub" id="kpi-telstra-sub">Telstra invoice as entered</div>
     </div>
   </div>
-  <!-- Dev vs Forecast banner -->
-  <div id="kpi-dev-banner" style="display:none;background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 20px;margin-bottom:16px;display:flex;align-items:center;gap:16px">
+  <!-- Dev vs Forecast banner — Run Cost only -->
+  <div id="kpi-dev-banner" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 20px;margin-bottom:16px;display:flex;align-items:center;gap:16px">
     <span style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Dev vs Run Forecast</span>
     <span class="kpi-val" id="kpi-dev" style="font-size:1.1rem">—</span>
     <span style="font-size:.75rem;color:var(--muted)">Run Cost vs monthly forecast target</span>
@@ -712,6 +725,7 @@ async function loadInputs(month) {
   document.getElementById("inp-telstra").value  = d.telstra_invoice  || "";
   document.getElementById("inp-fc-run").value   = d.forecast_run     || "";
   document.getElementById("inp-fc-proj").value  = d.forecast_project || "";
+  document.getElementById("inp-fc-ada").value   = d.forecast_ada     || "";
   document.getElementById("save-ok").style.display = "none";
 }
 
@@ -724,6 +738,7 @@ document.getElementById("save-inputs-btn").addEventListener("click", async () =>
       telstra_invoice:  document.getElementById("inp-telstra").value  || null,
       forecast_run:     document.getElementById("inp-fc-run").value   || null,
       forecast_project: document.getElementById("inp-fc-proj").value  || null,
+      forecast_ada:     document.getElementById("inp-fc-ada").value   || null,
     }),
   });
   document.getElementById("save-ok").style.display = "inline";
@@ -742,8 +757,23 @@ async function loadRunCost(month) {
   // KPI cards
   document.getElementById("kpi-run").textContent          = fmt(d.total_consumption_wo_td  || d.total_consumption_actual);
   document.getElementById("kpi-run-finops").textContent   = fmt(d.total_consumption_finops);
-  document.getElementById("kpi-proj").textContent         = fmt(d.total_project_wo_td      || d.total_project_actual);
-  document.getElementById("kpi-proj-finops").textContent  = fmt(d.total_project_finops);
+  // Project X-charge (non-ADA)
+  document.getElementById("kpi-proj").textContent         = fmt(d.total_non_ada_finops != null ? d.total_non_ada_finops : (d.total_project_wo_td || d.total_project_actual));
+  document.getElementById("kpi-proj-finops").textContent  = fmt(d.total_non_ada_finops || 0);
+  const projDevEl = document.getElementById("kpi-proj-dev");
+  if (d.deviation_project != null) {
+    const sign = d.deviation_project > 0 ? "+" : "";
+    projDevEl.textContent = sign + fmt(d.deviation_project) + " vs forecast";
+    projDevEl.style.color = d.deviation_project > 0 ? "var(--red)" : "var(--green)";
+  } else { projDevEl.textContent = "No forecast set"; projDevEl.style.color = ""; }
+  // ADA KPI
+  document.getElementById("kpi-ada").textContent = fmt(d.total_ada_finops || 0);
+  const adaDevEl = document.getElementById("kpi-ada-dev");
+  if (d.deviation_ada != null) {
+    const sign = d.deviation_ada > 0 ? "+" : "";
+    adaDevEl.textContent = sign + fmt(d.deviation_ada) + " vs ADA forecast (" + fmt(d.forecast_ada) + "/mo)";
+    adaDevEl.style.color = d.deviation_ada > 0 ? "var(--red)" : "var(--green)";
+  } else { adaDevEl.textContent = "Forecast: " + (d.forecast_ada ? fmt(d.forecast_ada) + "/mo" : "not set"); adaDevEl.style.color = ""; }
   document.getElementById("kpi-shared").textContent       = fmt(d.shared_pool);
   document.getElementById("kpi-mktadj").textContent       = fmt(d.total_marketplace_pos_adj || 0);
   document.getElementById("kpi-grand").textContent        = fmt(d.grand_total);
@@ -1556,8 +1586,8 @@ function renderChart() {
     : months;
 
   updateSummaryKPIs(view);
-  renderSingleChart("chart-run",  "chart-status-run",  view, "run_finops",     "forecast_run",     "#2B3752", "#C0392B", "run_workloads");
-  renderSingleChart("chart-proj", "chart-status-proj", view, "project_finops", "forecast_project", "#6A1B9A", "#eb6834", "project_workloads");
+  renderSingleChart("chart-run",  "chart-status-run",  view, "run_finops",      "forecast_run",     "#2B3752", "#C0392B", "run_workloads");
+  renderSingleChart("chart-proj", "chart-status-proj", view, "non_ada_finops",  "forecast_project", "#6A1B9A", "#eb6834", "project_workloads");
 }
 
 function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, fcColor, worksKey) {

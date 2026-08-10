@@ -42,10 +42,10 @@ def get_workloads():
 def get_monthly_input(month):
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT telstra_invoice, forecast_run, forecast_project FROM monthly_inputs WHERE month=?",
+            "SELECT telstra_invoice, forecast_run, forecast_project, forecast_ada FROM monthly_inputs WHERE month=?",
             (month,),
         ).fetchone()
-    return dict(row) if row else {"telstra_invoice": None, "forecast_run": None, "forecast_project": None}
+    return dict(row) if row else {"telstra_invoice": None, "forecast_run": None, "forecast_project": None, "forecast_ada": None}
 
 
 def _build_tag_map(rows):
@@ -78,7 +78,7 @@ def compute(month: str) -> dict:
         ).fetchall()
 
         mi = conn.execute(
-            "SELECT telstra_invoice, forecast_run, forecast_project FROM monthly_inputs WHERE month=?",
+            "SELECT telstra_invoice, forecast_run, forecast_project, forecast_ada FROM monthly_inputs WHERE month=?",
             (month,),
         ).fetchone()
 
@@ -174,6 +174,7 @@ def compute(month: str) -> dict:
     telstra_invoice  = float((mi["telstra_invoice"]  if mi else None) or 0)
     forecast_run     = (mi["forecast_run"]     if mi else None)
     forecast_project = (mi["forecast_project"] if mi else None)
+    forecast_ada     = (mi["forecast_ada"]     if mi else None)
 
     def shared_for(actual: float) -> float:
         """Shared pool allocation proportional to run_proj_total (excl. ADA)."""
@@ -315,6 +316,12 @@ def compute(month: str) -> dict:
     total_project_wo_td            = total_project_actual     + total_project_shared_alloc
     grand_total                    = total_consumption_wo_td + total_project_wo_td + total_marketplace_pos_adj
 
+    # ADA sub-totals (ADA: no shared alloc, no telstra diff applied)
+    ada_rows             = [r for r in project_rows if (r.get("domain") or "").upper() == "ADA"]
+    non_ada_rows         = [r for r in project_rows if (r.get("domain") or "").upper() != "ADA"]
+    total_ada_finops     = sum(r["total"] for r in ada_rows)
+    total_non_ada_finops = sum(r["total"] for r in non_ada_rows)
+
     return {
         "month":                    month,
         "telstra_invoice":          telstra_invoice,
@@ -324,6 +331,7 @@ def compute(month: str) -> dict:
         "telstra_diff_total":       telstra_diff_total,
         "forecast_run":             forecast_run,
         "forecast_project":         forecast_project,
+        "forecast_ada":             forecast_ada,
         "total_cur":                total_cur,
         "total_expense_cur":        total_expense_cur,
         "total_marketplace_cur":    total_marketplace_cur,
@@ -340,11 +348,14 @@ def compute(month: str) -> dict:
         "total_project_wo_td":       total_project_wo_td,
         "total_consumption_finops":  total_consumption_finops,
         "total_project_finops":      total_project_finops,
+        "total_ada_finops":          total_ada_finops,
+        "total_non_ada_finops":      total_non_ada_finops,
         "total_consumption_budget":  total_consumption_budget,
         "total_project_budget":      total_project_budget,
         "grand_total":              grand_total,
-        "deviation_run":            (total_consumption_finops - forecast_run)          if forecast_run          else None,
-        "deviation_project":        (total_project_finops     - forecast_project)      if forecast_project      else None,
+        "deviation_run":            (total_consumption_finops - forecast_run)         if forecast_run         else None,
+        "deviation_project":        (total_non_ada_finops    - forecast_project)      if forecast_project     else None,
+        "deviation_ada":            (total_ada_finops        - forecast_ada)          if forecast_ada         else None,
         "deviation_run_vs_budget":  (total_consumption_finops - total_consumption_budget) if total_consumption_budget else None,
         "deviation_proj_vs_budget": (total_project_finops     - total_project_budget)     if total_project_budget     else None,
         "shared_rows":       shared_rows,
