@@ -405,9 +405,23 @@ input[type=file]{display:none}
     <h4 style="font-size:.85rem;font-weight:700;color:var(--navy);margin-bottom:10px">Upload History</h4>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>File</th><th class="num">Rows</th><th class="num">Months</th><th>Uploaded by</th><th>At</th></tr></thead>
+        <thead><tr><th>File</th><th class="num">Rows</th><th class="num">Months</th><th>Uploaded by</th><th>At</th><th></th></tr></thead>
         <tbody id="history-body"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CUR VALIDATE MODAL ══════════════════════════════════════════════════ -->
+<div id="cur-validate-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;overflow-y:auto" onclick="if(event.target===this)closeCurModal()">
+  <div style="background:#fff;margin:40px auto;max-width:720px;border-radius:12px;padding:32px;position:relative">
+    <button onclick="closeCurModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#666">&times;</button>
+    <h3 style="margin:0 0 4px 0;font-size:1.1rem;font-weight:700;color:var(--navy)">CUR Upload Preview</h3>
+    <p style="margin:0 0 20px 0;font-size:.82rem;color:var(--muted)" id="cur-modal-subtitle"></p>
+    <div id="cur-modal-body"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;border-top:1px solid #eee;padding-top:16px">
+      <button class="btn btn-sec" onclick="closeCurModal()">Cancel</button>
+      <button class="btn" id="cur-confirm-btn" onclick="confirmCurUpload()">✅ Proceed with import</button>
     </div>
   </div>
 </div>
@@ -983,23 +997,142 @@ dropZone.addEventListener("drop", e => {
 });
 curInput.addEventListener("change", () => { if (curInput.files[0]) uploadCUR(curInput.files[0]); curInput.value = ""; });
 
+let _curUploadToken = null;
+
 async function uploadCUR(file) {
   const st = document.getElementById("upload-status");
-  st.innerHTML = '<div class="alert alert-info">⏳ Uploading and ingesting CUR data…</div>';
+  st.innerHTML = '<div class="alert alert-info">⏳ Parsing and validating CUR file…</div>';
   const fd = new FormData();
   fd.append("file", file);
   try {
-    const res  = await fetch(API + "/upload-cur", {method:"POST", body:fd});
+    const res  = await fetch(API + "/upload-cur/preview", {method:"POST", body:fd});
     const data = await res.json();
     if (!res.ok || data.error) { st.innerHTML = `<div class="alert alert-err">❌ ${data.error}</div>`; return; }
+    st.innerHTML = "";
+    _curUploadToken = data.token;
+    showCurPreviewModal(file.name, data);
+  } catch(e) { st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`; }
+}
+
+function showCurPreviewModal(filename, data) {
+  const v = data.validation || {};
+  const changes = data.changes || [];
+  const fmtAmt = n => n == null ? "—" : "$" + n.toLocaleString("en-AU", {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtDelta = d => {
+    if (d == null) return '<span style="color:#888">new</span>';
+    const sign = d >= 0 ? "+" : "";
+    const col  = Math.abs(d) < 0.05 ? "#888" : d > 0 ? "#1a6" : "#c00";
+    return `<span style="color:${col}">${sign}${fmtAmt(d)}</span>`;
+  };
+
+  // Validation section
+  let valHtml = "";
+  if (v.skipped) {
+    valHtml = `<div class="alert alert-info" style="margin-bottom:12px">ℹ️ Validation skipped: ${v.skip_reason}</div>`;
+  } else if (!v.ok) {
+    valHtml = `<div class="alert alert-err" style="margin-bottom:12px">
+      ⚠️ <strong>Historical data mismatch detected</strong> — checking workload <strong>${v.workload}</strong>.
+      The file's historical figures don't match what's in the database. This may mean you uploaded the wrong file.
+      You can still proceed, but please review carefully.
+    </div>`;
+    if (v.mismatches && v.mismatches.length) {
+      valHtml += `<table style="width:100%;font-size:.82rem;border-collapse:collapse;margin-bottom:12px">
+        <thead><tr style="background:#ffeaea"><th align="left" style="padding:6px 8px">Month</th>
+          <th align="right" style="padding:6px 8px">In File</th>
+          <th align="right" style="padding:6px 8px">In Database</th>
+          <th align="right" style="padding:6px 8px">Difference</th></tr></thead><tbody>` +
+        v.mismatches.map(m => `<tr><td style="padding:5px 8px;border-bottom:1px solid #fdd">${m.month}</td>
+          <td align="right" style="padding:5px 8px;border-bottom:1px solid #fdd">${fmtAmt(m.file_total)}</td>
+          <td align="right" style="padding:5px 8px;border-bottom:1px solid #fdd">${fmtAmt(m.db_total)}</td>
+          <td align="right" style="padding:5px 8px;border-bottom:1px solid #fdd;color:#c00">${fmtAmt(m.diff)}</td></tr>`).join("") +
+        "</tbody></table>";
+    }
+  } else {
+    const nChecked = (v.matches||[]).length;
+    valHtml = `<div class="alert alert-ok" style="margin-bottom:12px">
+      ✅ <strong>Historical data validated</strong> — checked workload <strong>${v.workload}</strong>
+      across ${nChecked} month${nChecked !== 1 ? "s" : ""}: all figures match the database.
+    </div>`;
+    if (v.matches && v.matches.length) {
+      valHtml += `<table style="width:100%;font-size:.82rem;border-collapse:collapse;margin-bottom:12px">
+        <thead><tr style="background:#f0f8f0"><th align="left" style="padding:5px 8px">Month</th>
+          <th align="right" style="padding:5px 8px">File total</th>
+          <th align="right" style="padding:5px 8px">DB total</th></tr></thead><tbody>` +
+        v.matches.map(m => `<tr><td style="padding:4px 8px;border-bottom:1px solid #e0eee0">${m.month}</td>
+          <td align="right" style="padding:4px 8px;border-bottom:1px solid #e0eee0">${fmtAmt(m.file_total)}</td>
+          <td align="right" style="padding:4px 8px;border-bottom:1px solid #e0eee0;color:#1a6">${fmtAmt(m.db_total)}</td></tr>`).join("") +
+        "</tbody></table>";
+    }
+  }
+
+  // Changes preview
+  let changeHtml = "";
+  if (changes.length) {
+    changeHtml = `<p style="font-size:.85rem;font-weight:700;color:var(--navy);margin:0 0 6px 0">What will change in the database</p>
+    <table style="width:100%;font-size:.82rem;border-collapse:collapse;margin-bottom:4px">
+      <thead><tr style="background:#f4f6fa">
+        <th align="left" style="padding:6px 8px">Month</th>
+        <th align="right" style="padding:6px 8px">File total</th>
+        <th align="right" style="padding:6px 8px">Current DB</th>
+        <th align="right" style="padding:6px 8px">Change</th>
+        <th align="center" style="padding:6px 8px">Status</th>
+      </tr></thead><tbody>` +
+    changes.map(c => `<tr>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee">${c.month}</td>
+      <td align="right" style="padding:5px 8px;border-bottom:1px solid #eee">${fmtAmt(c.file_total)}</td>
+      <td align="right" style="padding:5px 8px;border-bottom:1px solid #eee">${fmtAmt(c.db_total)}</td>
+      <td align="right" style="padding:5px 8px;border-bottom:1px solid #eee">${fmtDelta(c.delta)}</td>
+      <td align="center" style="padding:5px 8px;border-bottom:1px solid #eee">${c.is_new ? '<span style="background:#1a6;color:#fff;padding:1px 7px;border-radius:9px;font-size:.75rem">New</span>' : '<span style="background:#dde;color:#333;padding:1px 7px;border-radius:9px;font-size:.75rem">Update</span>'}</td>
+    </tr>`).join("") +
+    "</tbody></table>";
+  }
+
+  document.getElementById("cur-modal-subtitle").textContent =
+    `${filename} · ${data.months_found} month${data.months_found !== 1 ? "s" : ""} found`;
+  document.getElementById("cur-modal-body").innerHTML = valHtml + changeHtml;
+  document.getElementById("cur-validate-modal").style.display = "block";
+}
+
+async function confirmCurUpload() {
+  const btn = document.getElementById("cur-confirm-btn");
+  btn.disabled = true; btn.textContent = "⏳ Importing…";
+  const st = document.getElementById("upload-status");
+  try {
+    const res  = await fetch(API + "/upload-cur/confirm", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({token: _curUploadToken}),
+    });
+    const data = await res.json();
+    closeCurModal();
+    if (!res.ok || data.error) { st.innerHTML = `<div class="alert alert-err">❌ ${data.error}</div>`; return; }
     const warns = data.errors && data.errors.length ? `<br/><small>⚠️ ${data.errors.join("; ")}</small>` : "";
-    st.innerHTML = `<div class="alert alert-ok">✅ <strong>${file.name}</strong> ingested — ${data.rows_upserted.toLocaleString()} rows across ${data.months_found} months.${warns}</div>`;
+    st.innerHTML = `<div class="alert alert-ok">✅ CUR imported — ${(data.rows_upserted||0).toLocaleString()} rows across ${data.months_found} months.${warns}</div>`;
     await loadMonths();
     await loadHistory();
-    if (data.latest_month) {
-      switchTab("runcost");
-      await selectMonth(data.latest_month);
-    }
+    if (data.latest_month) { switchTab("runcost"); await selectMonth(data.latest_month); }
+  } catch(e) {
+    closeCurModal();
+    st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`;
+  }
+}
+
+function closeCurModal() {
+  document.getElementById("cur-validate-modal").style.display = "none";
+  _curUploadToken = null;
+}
+
+async function revertUpload(uploadId, filename) {
+  if (!confirm(`Revert upload "${filename}"?\n\nThis will restore the database to its state before this upload was ingested. This cannot be undone.`)) return;
+  const st = document.getElementById("upload-status");
+  st.innerHTML = '<div class="alert alert-info">⏳ Reverting…</div>';
+  try {
+    const res  = await fetch(API + `/upload-cur/revert/${uploadId}`, {method:"POST"});
+    const data = await res.json();
+    if (!res.ok || data.error) { st.innerHTML = `<div class="alert alert-err">❌ ${data.error}</div>`; return; }
+    st.innerHTML = `<div class="alert alert-ok">✅ Reverted "${data.filename}" — ${data.restored} rows restored, ${data.deleted} new rows removed.</div>`;
+    await loadMonths();
+    await loadHistory();
   } catch(e) { st.innerHTML = `<div class="alert alert-err">❌ ${e.message}</div>`; }
 }
 
@@ -1008,11 +1141,19 @@ async function loadHistory() {
   const rows = d.history || [];
   if (!rows.length) return;
   document.getElementById("history-section").style.display = "block";
-  document.getElementById("history-body").innerHTML = rows.map(r =>
-    `<tr><td>${r.filename}</td><td class="num">${(r.rows_upserted||0).toLocaleString()}</td>
-     <td class="num">${r.months_found||0}</td><td>${r.uploaded_by||""}</td>
-     <td style="color:var(--muted)">${r.uploaded_at||""}</td></tr>`
-  ).join("");
+  document.getElementById("history-body").innerHTML = rows.map(r => {
+    const revertBtn = r.revertable
+      ? `<button class="btn btn-sec" style="font-size:.75rem;padding:3px 10px" onclick="revertUpload(${r.id},${JSON.stringify(r.filename)})">↩ Revert</button>`
+      : "";
+    return `<tr>
+      <td>${r.filename}</td>
+      <td class="num">${(r.rows_upserted||0).toLocaleString()}</td>
+      <td class="num">${r.months_found||0}</td>
+      <td>${r.uploaded_by||""}</td>
+      <td style="color:var(--muted)">${r.uploaded_at||""}</td>
+      <td>${revertBtn}</td>
+    </tr>`;
+  }).join("");
 }
 
 // ── Workloads ─────────────────────────────────────────────────────────────────

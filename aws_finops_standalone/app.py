@@ -33,7 +33,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from waitress import serve
 
 from aws_db import init_db, get_conn
-from aws_ingestor import ingest_cur
+from aws_ingestor import ingest_cur, parse_cur_only, validate_cur_data, preview_cur_changes
 from aws_run_cost import get_available_months, get_workloads, get_monthly_input, compute
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
@@ -468,11 +468,11 @@ def api_save_inputs(month):
     return jsonify({"ok": True})
 
 
-# ── API: upload CUR ───────────────────────────────────────────────────────────
+# ── API: upload CUR — step 1: parse + validate + preview (no DB write) ────────
 
-@app.route("/AWSFinOps/api/upload-cur", methods=["POST"])
+@app.route("/AWSFinOps/api/upload-cur/preview", methods=["POST"])
 @login_required
-def api_upload_cur():
+def api_upload_cur_preview():
     f = request.files.get("file")
     if not f or not f.filename:
         return jsonify({"error": "No file received."}), 400
@@ -481,23 +481,113 @@ def api_upload_cur():
     if ext not in (".xlsx", ".xlsm", ".xls", ".csv"):
         return jsonify({"error": f"Unsupported file type ({ext}). Use .xlsx or .csv."}), 400
 
-    tmp_path = os.path.join(UPLOAD_TMP, f"{uuid.uuid4().hex}{ext}")
+    token = uuid.uuid4().hex
+    tmp_path = os.path.join(UPLOAD_TMP, f"{token}{ext}")
     try:
         f.save(tmp_path)
-        result = ingest_cur(tmp_path, uploaded_by=session.get("username", ""))
+        month_dates, data_rows = parse_cur_only(tmp_path)
 
-        months = get_available_months()
-        result["latest_month"] = months[-1] if months else None
-        return jsonify(result)
+        if not data_rows:
+            os.remove(tmp_path)
+            return jsonify({"error": "No data rows found — check file format."}), 400
+
+        validation = validate_cur_data(data_rows, month_dates)
+        changes    = preview_cur_changes(data_rows, month_dates)
+
+        return jsonify({
+            "token":       token,
+            "filename":    f.filename,
+            "months_found": len(month_dates),
+            "validation":  validation,
+            "changes":     changes,
+        })
     except Exception as e:
-        log.error(f"CUR upload error: {e}")
-        return jsonify({"error": str(e)}), 500
-    finally:
+        log.error(f"CUR preview error: {e}")
         try:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
         except Exception:
             pass
+        return jsonify({"error": str(e)}), 500
+
+
+# ── API: upload CUR — step 2: confirm (actually write to DB) ──────────────────
+
+@app.route("/AWSFinOps/api/upload-cur/confirm", methods=["POST"])
+@login_required
+def api_upload_cur_confirm():
+    data  = request.get_json(force=True)
+    token = (data.get("token") or "").strip()
+    if not token or not re.match(r"^[0-9a-f]{32}$", token):
+        return jsonify({"error": "Invalid or missing token."}), 400
+
+    # Find the staged file — try all supported extensions
+    tmp_path = None
+    for ext in (".xlsx", ".xlsm", ".xls", ".csv"):
+        candidate = os.path.join(UPLOAD_TMP, f"{token}{ext}")
+        if os.path.exists(candidate):
+            tmp_path = candidate
+            break
+
+    if not tmp_path:
+        return jsonify({"error": "Preview session expired — please re-upload the file."}), 400
+
+    try:
+        result = ingest_cur(tmp_path, uploaded_by=session.get("username", ""))
+        months = get_available_months()
+        result["latest_month"] = months[-1] if months else None
+        return jsonify(result)
+    except Exception as e:
+        log.error(f"CUR confirm error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        try:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+
+
+# ── API: upload CUR — revert a previous upload ────────────────────────────────
+
+@app.route("/AWSFinOps/api/upload-cur/revert/<int:upload_id>", methods=["POST"])
+@login_required
+def api_upload_cur_revert(upload_id):
+    with get_conn() as conn:
+        # Check upload exists
+        ul = conn.execute("SELECT id, filename FROM upload_log WHERE id=?", (upload_id,)).fetchone()
+        if not ul:
+            return jsonify({"error": f"Upload #{upload_id} not found."}), 404
+
+        snaps = conn.execute(
+            "SELECT account_id, workloads_tag, category, month, account_name, outcomegroup, old_amount "
+            "FROM cur_data_snapshots WHERE upload_id=?", (upload_id,)
+        ).fetchall()
+
+        restored = deleted = 0
+        for s in snaps:
+            if s["old_amount"] is None:
+                # Row was new — delete it
+                conn.execute(
+                    "DELETE FROM cur_data WHERE account_id=? AND workloads_tag=? AND category=? AND month=?",
+                    (s["account_id"], s["workloads_tag"], s["category"], s["month"])
+                )
+                deleted += 1
+            else:
+                # Row was updated — restore previous value
+                conn.execute(
+                    "UPDATE cur_data SET amount=?, account_name=?, outcomegroup=? "
+                    "WHERE account_id=? AND workloads_tag=? AND category=? AND month=?",
+                    (s["old_amount"], s["account_name"], s["outcomegroup"],
+                     s["account_id"], s["workloads_tag"], s["category"], s["month"])
+                )
+                restored += 1
+
+        conn.execute("DELETE FROM cur_data_snapshots WHERE upload_id=?", (upload_id,))
+        conn.execute("DELETE FROM upload_log WHERE id=?", (upload_id,))
+
+    log.info(f"Reverted upload #{upload_id} ({ul['filename']}): {restored} restored, {deleted} deleted by {session.get('username','')}")
+    return jsonify({"ok": True, "restored": restored, "deleted": deleted, "filename": ul["filename"]})
 
 
 # ── API: upload history ────────────────────────────────────────────────────────
@@ -507,10 +597,22 @@ def api_upload_cur():
 def api_upload_history():
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT filename, rows_upserted, months_found, uploaded_by, uploaded_at "
+            "SELECT id, filename, rows_upserted, months_found, uploaded_by, uploaded_at "
             "FROM upload_log ORDER BY id DESC LIMIT 20"
         ).fetchall()
-    return jsonify({"history": [dict(r) for r in rows]})
+        # Which of the last 2 uploads have snapshots (i.e. are revertable)
+        revertable_ids = {
+            r["upload_id"] for r in conn.execute(
+                "SELECT DISTINCT upload_id FROM cur_data_snapshots "
+                "WHERE upload_id IN (SELECT id FROM upload_log ORDER BY id DESC LIMIT 2)"
+            ).fetchall()
+        }
+    history = []
+    for r in rows:
+        d = dict(r)
+        d["revertable"] = r["id"] in revertable_ids
+        history.append(d)
+    return jsonify({"history": history})
 
 
 # ── API: workloads ─────────────────────────────────────────────────────────────

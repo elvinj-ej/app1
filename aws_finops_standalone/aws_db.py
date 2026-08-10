@@ -159,6 +159,22 @@ def init_db():
             "po_number       TEXT,"
             "workload_match  TEXT)"
         )
+        # Snapshot table — saves "before" state for every row touched by an upload
+        # so uploads can be individually reverted.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cur_data_snapshots ("
+            "upload_id     INTEGER NOT NULL,"
+            "account_id    TEXT NOT NULL,"
+            "workloads_tag TEXT NOT NULL DEFAULT '',"
+            "category      TEXT NOT NULL,"
+            "month         TEXT NOT NULL,"
+            "account_name  TEXT,"
+            "outcomegroup  TEXT,"
+            "old_amount    REAL,"   # NULL = row was newly inserted (didn't exist before)
+            "PRIMARY KEY (upload_id, account_id, workloads_tag, category, month))"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_snap_upload ON cur_data_snapshots(upload_id)")
+
         # Migrations registry — every data-change migration is recorded here and
         # runs exactly once, so restarts never overwrite user-saved values.
         conn.execute(
