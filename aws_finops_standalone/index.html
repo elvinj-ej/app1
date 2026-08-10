@@ -1587,7 +1587,7 @@ function renderChart() {
 
   updateSummaryKPIs(view);
   renderSingleChart("chart-run",  "chart-status-run",  view, "run_finops",      "forecast_run",     "#2B3752", "#C0392B", "run_workloads");
-  renderSingleChart("chart-proj", "chart-status-proj", view, "non_ada_finops",  "forecast_project", "#6A1B9A", "#eb6834", "project_workloads");
+  renderSingleChart("chart-proj", "chart-status-proj", view, "project_finops",   "forecast_project", "#6A1B9A", "#eb6834", "project_workloads");
 }
 
 function renderSingleChart(elId, statusId, months, actualKey, fcKey, barColor, fcColor, worksKey) {
@@ -1830,6 +1830,20 @@ function showSingleTip(e, bar) {
       const col   = delta > 0 ? "#f0a0a0" : "#8de8a0";
       html += ` <span style="color:${col};font-size:.74rem">(${sign}${pct}% MoM)</span>`;
     }
+  }
+
+  // Projected full-month estimate for current (incomplete) month
+  const today = new Date();
+  if (actual != null && dt.getFullYear() === today.getFullYear() && dt.getMonth() === today.getMonth()) {
+    const dayOfMonth  = today.getDate();
+    const daysInMonth = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+    const dailyRate   = actual / dayOfMonth;
+    const projected   = dailyRate * daysInMonth;
+    const remaining   = daysInMonth - dayOfMonth;
+    html += `<div style="margin-top:5px;border-top:1px solid rgba(255,255,255,.18);padding-top:5px;font-size:.75rem;color:#ffd97d">`;
+    html += `&#x1F4CA; Projected month-end: <strong>${fmt(projected)}</strong><br/>`;
+    html += `<span style="opacity:.8">Based on ${dayOfMonth}/${daysInMonth} days · ${fmt(dailyRate)}/day · ${remaining} day${remaining!==1?"s":""} left</span>`;
+    html += `</div>`;
   }
 
   // 3-segment breakdown
