@@ -279,16 +279,29 @@ def init_db():
                 )
             _mark("m08_forecast_ada_fy27")
 
+        if not _done("m09_forecast_project_mes_cna_fy27"):
+            # forecast_project now covers MES+CNA only (ADA split out to forecast_ada).
+            # Update any month still holding the old combined value of 97800 to 82367.
+            for _m in [
+                "2026-07-01","2026-08-01","2026-09-01","2026-10-01","2026-11-01","2026-12-01",
+                "2027-01-01","2027-02-01","2027-03-01","2027-04-01","2027-05-01","2027-06-01",
+            ]:
+                conn.execute(
+                    "UPDATE monthly_inputs SET forecast_project=82367 WHERE month=? AND forecast_project=97800",
+                    (_m,),
+                )
+            _mark("m09_forecast_project_mes_cna_fy27")
+
         # ── Seed data (INSERT OR IGNORE — never overwrites existing rows) ─────
 
         # FY27 forecasts
         _FY27_FORECASTS = [
-            ("2026-07-01", 305144, 97800),
-            ("2026-08-01", 305144, 97800),
-            ("2026-09-01", 305144, 97800),
-            ("2026-10-01", 305144, 97800),
-            ("2026-11-01", 305144, 97800),
-            ("2026-12-01", 305144, 97800),
+            ("2026-07-01", 305144, 82367),
+            ("2026-08-01", 305144, 82367),
+            ("2026-09-01", 305144, 82367),
+            ("2026-10-01", 305144, 82367),
+            ("2026-11-01", 305144, 82367),
+            ("2026-12-01", 305144, 82367),
             ("2027-01-01", 305144, 126100),
             ("2027-02-01", 305144, 126100),
             ("2027-03-01", 305144, 126100),
