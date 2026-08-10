@@ -292,22 +292,35 @@ def init_db():
                 )
             _mark("m09_forecast_project_mes_cna_fy27")
 
+        if not _done("m10_forecast_project_cna_increase_jan27"):
+            # CNA budget increases from $35,700/mo to $64,000/mo from Jan 2027.
+            # Jan-Jun 2027 forecast_project = 82,367 (MES+CNA base) + 28,300 (CNA increase) = 110,667.
+            # Update any month still holding the old combined value of 126100.
+            for _m in [
+                "2027-01-01","2027-02-01","2027-03-01","2027-04-01","2027-05-01","2027-06-01",
+            ]:
+                conn.execute(
+                    "UPDATE monthly_inputs SET forecast_project=110667 WHERE month=? AND forecast_project=126100",
+                    (_m,),
+                )
+            _mark("m10_forecast_project_cna_increase_jan27")
+
         # ── Seed data (INSERT OR IGNORE — never overwrites existing rows) ─────
 
         # FY27 forecasts
         _FY27_FORECASTS = [
-            ("2026-07-01", 305144, 82367),
-            ("2026-08-01", 305144, 82367),
-            ("2026-09-01", 305144, 82367),
-            ("2026-10-01", 305144, 82367),
-            ("2026-11-01", 305144, 82367),
-            ("2026-12-01", 305144, 82367),
-            ("2027-01-01", 305144, 126100),
-            ("2027-02-01", 305144, 126100),
-            ("2027-03-01", 305144, 126100),
-            ("2027-04-01", 305144, 126100),
-            ("2027-05-01", 305144, 126100),
-            ("2027-06-01", 305144, 126100),
+            ("2026-07-01", 305144,  82367),
+            ("2026-08-01", 305144,  82367),
+            ("2026-09-01", 305144,  82367),
+            ("2026-10-01", 305144,  82367),
+            ("2026-11-01", 305144,  82367),
+            ("2026-12-01", 305144,  82367),
+            ("2027-01-01", 305144, 110667),  # CNA increases to $64k/mo
+            ("2027-02-01", 305144, 110667),
+            ("2027-03-01", 305144, 110667),
+            ("2027-04-01", 305144, 110667),
+            ("2027-05-01", 305144, 110667),
+            ("2027-06-01", 305144, 110667),
         ]
         for month, fc_run, fc_proj in _FY27_FORECASTS:
             conn.execute(
