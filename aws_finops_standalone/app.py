@@ -982,8 +982,9 @@ def api_receiving_forecast_estimate(month):
         days_elapsed = upload_dt.day
         if days_elapsed < days_in_month:
             estimate = round(base_total * days_in_month / days_elapsed, 2)
-            note = (f"CUR uploaded {upload_dt.strftime('%-d %b')} ({days_elapsed}/{days_in_month} days). "
-                    f"Base: ${base_total:,.2f} (expense${mkt_note}) × {days_in_month}/{days_elapsed} "
+            day_str = str(upload_dt.day)
+            note = (f"CUR uploaded {day_str} {upload_dt.strftime('%b')} ({days_elapsed}/{days_in_month} days). "
+                    f"Base: ${base_total:,.2f} (expense{mkt_note}) × {days_in_month}/{days_elapsed} "
                     f"= ${estimate:,.2f}")
             return jsonify({
                 "estimate": estimate,
