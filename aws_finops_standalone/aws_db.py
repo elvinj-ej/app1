@@ -209,6 +209,10 @@ def init_db():
             conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_project REAL")
         if "forecast_ada" not in _mi_cols:
             conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_ada REAL")
+        if "forecast_mes" not in _mi_cols:
+            conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_mes REAL")
+        if "forecast_cna" not in _mi_cols:
+            conn.execute("ALTER TABLE monthly_inputs ADD COLUMN forecast_cna REAL")
 
         # ── Helper: run a migration exactly once ──────────────────────────────
         def _done(mid):
@@ -305,27 +309,56 @@ def init_db():
                 )
             _mark("m10_forecast_project_cna_increase_jan27")
 
+        if not _done("m11_forecast_mes_cna_fy27"):
+            # Seed per-workload forecasts now that MES and CNA are tracked independently.
+            # MES: $46,667/mo all year. CNA: $35,700 Jul-Dec 2026, $64,000 Jan-Jun 2027.
+            _MES = round(560_000 / 12, 2)
+            _FC_MES_CNA = [
+                ("2026-07-01", _MES, 35700.0),
+                ("2026-08-01", _MES, 35700.0),
+                ("2026-09-01", _MES, 35700.0),
+                ("2026-10-01", _MES, 35700.0),
+                ("2026-11-01", _MES, 35700.0),
+                ("2026-12-01", _MES, 35700.0),
+                ("2027-01-01", _MES, 64000.0),
+                ("2027-02-01", _MES, 64000.0),
+                ("2027-03-01", _MES, 64000.0),
+                ("2027-04-01", _MES, 64000.0),
+                ("2027-05-01", _MES, 64000.0),
+                ("2027-06-01", _MES, 64000.0),
+            ]
+            for _m, _fmes, _fcna in _FC_MES_CNA:
+                conn.execute(
+                    "INSERT INTO monthly_inputs (month, forecast_mes, forecast_cna) VALUES (?,?,?) "
+                    "ON CONFLICT(month) DO UPDATE SET "
+                    "forecast_mes=COALESCE(forecast_mes, excluded.forecast_mes), "
+                    "forecast_cna=COALESCE(forecast_cna, excluded.forecast_cna)",
+                    (_m, _fmes, _fcna),
+                )
+            _mark("m11_forecast_mes_cna_fy27")
+
         # ── Seed data (INSERT OR IGNORE — never overwrites existing rows) ─────
 
-        # FY27 forecasts
+        # FY27 forecasts (forecast_project kept for backward compat but superseded by mes+cna)
         _FY27_FORECASTS = [
-            ("2026-07-01", 305144,  82367),
-            ("2026-08-01", 305144,  82367),
-            ("2026-09-01", 305144,  82367),
-            ("2026-10-01", 305144,  82367),
-            ("2026-11-01", 305144,  82367),
-            ("2026-12-01", 305144,  82367),
-            ("2027-01-01", 305144, 110667),  # CNA increases to $64k/mo
-            ("2027-02-01", 305144, 110667),
-            ("2027-03-01", 305144, 110667),
-            ("2027-04-01", 305144, 110667),
-            ("2027-05-01", 305144, 110667),
-            ("2027-06-01", 305144, 110667),
+            ("2026-07-01", 305144,  82367, round(560_000/12, 2), 35700.0),
+            ("2026-08-01", 305144,  82367, round(560_000/12, 2), 35700.0),
+            ("2026-09-01", 305144,  82367, round(560_000/12, 2), 35700.0),
+            ("2026-10-01", 305144,  82367, round(560_000/12, 2), 35700.0),
+            ("2026-11-01", 305144,  82367, round(560_000/12, 2), 35700.0),
+            ("2026-12-01", 305144,  82367, round(560_000/12, 2), 35700.0),
+            ("2027-01-01", 305144, 110667, round(560_000/12, 2), 64000.0),
+            ("2027-02-01", 305144, 110667, round(560_000/12, 2), 64000.0),
+            ("2027-03-01", 305144, 110667, round(560_000/12, 2), 64000.0),
+            ("2027-04-01", 305144, 110667, round(560_000/12, 2), 64000.0),
+            ("2027-05-01", 305144, 110667, round(560_000/12, 2), 64000.0),
+            ("2027-06-01", 305144, 110667, round(560_000/12, 2), 64000.0),
         ]
-        for month, fc_run, fc_proj in _FY27_FORECASTS:
+        for month, fc_run, fc_proj, fc_mes, fc_cna in _FY27_FORECASTS:
             conn.execute(
-                "INSERT OR IGNORE INTO monthly_inputs (month, forecast_run, forecast_project) VALUES (?,?,?)",
-                (month, fc_run, fc_proj),
+                "INSERT OR IGNORE INTO monthly_inputs "
+                "(month, forecast_run, forecast_project, forecast_mes, forecast_cna) VALUES (?,?,?,?,?)",
+                (month, fc_run, fc_proj, fc_mes, fc_cna),
             )
 
         # Workloads

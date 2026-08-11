@@ -452,18 +452,22 @@ def api_save_inputs(month):
         forecast_run     = float(data.get("forecast_run")     or 0) or None
         forecast_project = float(data.get("forecast_project") or 0) or None
         forecast_ada     = float(data.get("forecast_ada")     or 0) or None
+        forecast_mes     = float(data.get("forecast_mes")     or 0) or None
+        forecast_cna     = float(data.get("forecast_cna")     or 0) or None
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
 
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO monthly_inputs (month, telstra_invoice, forecast_run, forecast_project, forecast_ada) VALUES (?,?,?,?,?) "
+            "INSERT INTO monthly_inputs (month, telstra_invoice, forecast_run, forecast_project, forecast_ada, forecast_mes, forecast_cna) VALUES (?,?,?,?,?,?,?) "
             "ON CONFLICT(month) DO UPDATE SET "
             "telstra_invoice=excluded.telstra_invoice, "
             "forecast_run=excluded.forecast_run, "
             "forecast_project=excluded.forecast_project, "
-            "forecast_ada=excluded.forecast_ada",
-            (month, telstra, forecast_run, forecast_project, forecast_ada),
+            "forecast_ada=excluded.forecast_ada, "
+            "forecast_mes=excluded.forecast_mes, "
+            "forecast_cna=excluded.forecast_cna",
+            (month, telstra, forecast_run, forecast_project, forecast_ada, forecast_mes, forecast_cna),
         )
 
     log.info(f"Monthly inputs saved: {month} by {session.get('username','')}")
@@ -830,8 +834,9 @@ def api_summary():
 
     with get_conn() as conn:
         fc_rows = conn.execute(
-            "SELECT month, forecast_run, forecast_project, forecast_ada FROM monthly_inputs "
-            "WHERE forecast_run IS NOT NULL OR forecast_project IS NOT NULL OR forecast_ada IS NOT NULL ORDER BY month"
+            "SELECT month, forecast_run, forecast_project, forecast_ada, forecast_mes, forecast_cna FROM monthly_inputs "
+            "WHERE forecast_run IS NOT NULL OR forecast_project IS NOT NULL OR forecast_ada IS NOT NULL "
+            "   OR forecast_mes IS NOT NULL OR forecast_cna IS NOT NULL ORDER BY month"
         ).fetchall()
     forecast_map = {r["month"]: dict(r) for r in fc_rows}
 
@@ -858,8 +863,12 @@ def api_summary():
                     "forecast_run":            fc.get("forecast_run"),
                     "forecast_project":        fc.get("forecast_project"),
                     "forecast_ada":            fc.get("forecast_ada"),
+                    "forecast_mes":            fc.get("forecast_mes"),
+                    "forecast_cna":            fc.get("forecast_cna"),
                     "ada_finops":              d["total_ada_finops"],
                     "non_ada_finops":          d["total_non_ada_finops"],
+                    "mes_finops":              d["total_mes_finops"],
+                    "cna_finops":              d["total_cna_finops"],
                     "run_workloads":           [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"], "budget_monthly": r.get("budget_monthly") or 0} for r in d["consumption_rows"]],
                     "project_workloads":       [{"name": r["workload"], "actual": r["actual"], "shared_alloc": r["shared_alloc"], "telstra_diff": r["telstra_diff"], "budget_monthly": r["budget_monthly"], "domain": r["domain"]} for r in d["project_rows"]],
                 })
@@ -875,6 +884,8 @@ def api_summary():
                 "forecast_run":    fc.get("forecast_run"),
                 "forecast_project":fc.get("forecast_project"),
                 "forecast_ada":    fc.get("forecast_ada"),
+                "forecast_mes":    fc.get("forecast_mes"),
+                "forecast_cna":    fc.get("forecast_cna"),
             })
     return jsonify({"months": result})
 

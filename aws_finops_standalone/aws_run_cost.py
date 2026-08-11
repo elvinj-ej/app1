@@ -42,10 +42,10 @@ def get_workloads():
 def get_monthly_input(month):
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT telstra_invoice, forecast_run, forecast_project, forecast_ada FROM monthly_inputs WHERE month=?",
+            "SELECT telstra_invoice, forecast_run, forecast_project, forecast_ada, forecast_mes, forecast_cna FROM monthly_inputs WHERE month=?",
             (month,),
         ).fetchone()
-    return dict(row) if row else {"telstra_invoice": None, "forecast_run": None, "forecast_project": None, "forecast_ada": None}
+    return dict(row) if row else {"telstra_invoice": None, "forecast_run": None, "forecast_project": None, "forecast_ada": None, "forecast_mes": None, "forecast_cna": None}
 
 
 def _build_tag_map(rows):
@@ -78,7 +78,7 @@ def compute(month: str) -> dict:
         ).fetchall()
 
         mi = conn.execute(
-            "SELECT telstra_invoice, forecast_run, forecast_project, forecast_ada FROM monthly_inputs WHERE month=?",
+            "SELECT telstra_invoice, forecast_run, forecast_project, forecast_ada, forecast_mes, forecast_cna FROM monthly_inputs WHERE month=?",
             (month,),
         ).fetchone()
 
@@ -175,6 +175,8 @@ def compute(month: str) -> dict:
     forecast_run     = (mi["forecast_run"]     if mi else None)
     forecast_project = (mi["forecast_project"] if mi else None)
     forecast_ada     = (mi["forecast_ada"]     if mi else None)
+    forecast_mes     = (mi["forecast_mes"]     if mi else None)
+    forecast_cna     = (mi["forecast_cna"]     if mi else None)
 
     def shared_for(actual: float) -> float:
         """Shared pool allocation proportional to run_proj_total (excl. ADA)."""
@@ -321,6 +323,11 @@ def compute(month: str) -> dict:
     non_ada_rows         = [r for r in project_rows if (r.get("domain") or "").upper() != "ADA"]
     total_ada_finops     = sum(r["total"] for r in ada_rows)
     total_non_ada_finops = sum(r["total"] for r in non_ada_rows)
+    # Per-workload totals for MES and CNA
+    mes_rows         = [r for r in project_rows if r["workload"] == "MES"]
+    cna_rows         = [r for r in project_rows if r["workload"] == "CNA"]
+    total_mes_finops = sum(r["total"] for r in mes_rows)
+    total_cna_finops = sum(r["total"] for r in cna_rows)
 
     return {
         "month":                    month,
@@ -332,6 +339,8 @@ def compute(month: str) -> dict:
         "forecast_run":             forecast_run,
         "forecast_project":         forecast_project,
         "forecast_ada":             forecast_ada,
+        "forecast_mes":             forecast_mes,
+        "forecast_cna":             forecast_cna,
         "total_cur":                total_cur,
         "total_expense_cur":        total_expense_cur,
         "total_marketplace_cur":    total_marketplace_cur,
@@ -350,12 +359,16 @@ def compute(month: str) -> dict:
         "total_project_finops":      total_project_finops,
         "total_ada_finops":          total_ada_finops,
         "total_non_ada_finops":      total_non_ada_finops,
+        "total_mes_finops":          total_mes_finops,
+        "total_cna_finops":          total_cna_finops,
         "total_consumption_budget":  total_consumption_budget,
         "total_project_budget":      total_project_budget,
         "grand_total":              grand_total,
         "deviation_run":            (total_consumption_finops - forecast_run)         if forecast_run         else None,
         "deviation_project":        (total_non_ada_finops    - forecast_project)      if forecast_project     else None,
         "deviation_ada":            (total_ada_finops        - forecast_ada)          if forecast_ada         else None,
+        "deviation_mes":            (total_mes_finops        - forecast_mes)          if forecast_mes         else None,
+        "deviation_cna":            (total_cna_finops        - forecast_cna)          if forecast_cna         else None,
         "deviation_run_vs_budget":  (total_consumption_finops - total_consumption_budget) if total_consumption_budget else None,
         "deviation_proj_vs_budget": (total_project_finops     - total_project_budget)     if total_project_budget     else None,
         "shared_rows":       shared_rows,
