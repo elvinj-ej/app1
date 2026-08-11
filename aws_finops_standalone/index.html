@@ -2296,8 +2296,9 @@ function renderRunBurnRate() {
   const avgMonthly   = last3.length ? last3.reduce((s,m) => s + (m.run_finops||0), 0) / last3.length : 0;
   const projected    = spent + avgMonthly * remainingMos;
   const projVsBudget = annualBudget > 0 ? projected - annualBudget : null;
-
-  const isOnTrack = pct != null && (projVsBudget == null || projVsBudget <= 0);
+  const elapsedFrac  = annualBudget > 0 && actualMonths.length > 0 ? actualMonths.length / 12 : null;
+  const overPace     = elapsedFrac != null && (spent / annualBudget) > elapsedFrac;
+  const isOnTrack    = !overPace && (projVsBudget == null || projVsBudget <= 0);
   const icon      = isOnTrack ? "✓" : "⚠";
   const status    = fyComplete
     ? (isOnTrack ? "Well done — finished within forecast" : "Finished over forecast")
@@ -2337,7 +2338,9 @@ function _projectBurnBox(el, name, accentColor, borderColor, bgColor, fyData, ac
   const avgMo        = last3.length ? last3.reduce((s,m) => s + (m[finopsKey]||0), 0) / last3.length : 0;
   const projected    = spent + avgMo * remainingMos;
   const pvb          = annualBudget > 0 ? projected - annualBudget : null;
-  const isOnTrack    = pvb == null || pvb <= 0;
+  const elapsedFrac  = annualBudget > 0 && actualMonths.length > 0 ? actualMonths.length / 12 : null;
+  const overPace     = elapsedFrac != null && (spent / annualBudget) > elapsedFrac;
+  const isOnTrack    = !overPace && (pvb == null || pvb <= 0);
   const barColor     = pct == null ? "#ccc" : pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
   const statusCol    = isOnTrack ? "#2E7D32" : "#C0392B";
 
@@ -2383,9 +2386,11 @@ function renderADABurnRate() {
   const remaining  = annualBudget - spent;
   const last3      = actualMonths.slice(-3);
   const avgMo      = last3.length ? last3.reduce((s,m) => s + (m.ada_finops||0), 0) / last3.length : 0;
-  const projected  = spent + avgMo * remainingMos;
-  const pvb        = projected - annualBudget;
-  const isOnTrack  = pvb <= 0;
+  const projected    = spent + avgMo * remainingMos;
+  const pvb          = projected - annualBudget;
+  const elapsedFrac  = actualMonths.length > 0 ? actualMonths.length / 12 : null;
+  const overPace     = elapsedFrac != null && (spent / annualBudget) > elapsedFrac;
+  const isOnTrack    = !overPace && pvb <= 0;
   const barColor   = pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
   const statusCol  = isOnTrack ? "#2E7D32" : "#C0392B";
   el.innerHTML = `
