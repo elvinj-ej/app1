@@ -2279,6 +2279,23 @@ function burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected,
     </div>`;
 }
 
+/// ── Burn rate watch analysis note ────────────────────────────────────────────
+function burnWatchNote({ overPace, pct, elapsedFrac, moCount, pvb, projected, annualBudget }) {
+  const reasons = [];
+  if (overPace) {
+    const spentPct   = (pct   != null ? pct.toFixed(1)              : "—") + "%";
+    const elapsedPct = (elapsedFrac != null ? (elapsedFrac*100).toFixed(1) : "—") + "%";
+    reasons.push(`${spentPct} of forecast consumed with ${elapsedPct} of the year elapsed (${moCount} month${moCount!==1?"s":""}) — spending faster than the budgeted rate`);
+  }
+  if (pvb != null && pvb > 0) {
+    reasons.push(`projected year-end ${fmt(projected)} exceeds annual forecast by ${fmt(pvb)}`);
+  }
+  if (!reasons.length) return "";
+  return `<div style="margin-top:8px;padding:8px 12px;background:#FFF8E1;border:1px solid #F0A500;border-radius:5px;font-size:.75rem;color:#7B4F00">
+    <strong>⚠ Why Watch needed:</strong> ${reasons.join("; ")}.
+  </div>`;
+}
+
 // ── Box 1: Burn Rate — Run Workloads ─────────────────────────────────────────
 function renderRunBurnRate() {
   const el = document.getElementById("run-burn-rate");
@@ -2316,6 +2333,7 @@ function renderRunBurnRate() {
       ${burnRateBar(pct, annualBudget)}
       ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget, fyComplete })}
     </div>
+    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, moCount: actualMonths.length, pvb: projVsBudget, projected, annualBudget }) : ""}
     <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
       <strong>How forecast is calculated:</strong>
       Annual forecast = sum of monthly <em>forecast_run</em> inputs entered for all 12 FY months (entered via the Inputs bar on the Detailed tab).
@@ -2355,6 +2373,7 @@ function _projectBurnBox(el, name, accentColor, borderColor, bgColor, fyData, ac
       ${burnRateBar(pct, annualBudget)}
       ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget: pvb, fyComplete })}
     </div>
+    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, moCount: actualMonths.length, pvb, projected, annualBudget }) : ""}
     <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
       Annual forecast = sum of monthly <em>${fcKey}</em> entries across all 12 FY months.
       Projected = Spent YTD + avg last 3 months × ${remainingMos} remaining months.
@@ -2404,6 +2423,7 @@ function renderADABurnRate() {
       ${burnRateBar(pct, annualBudget)}
       ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget: pvb, fyComplete })}
     </div>
+    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, moCount: actualMonths.length, pvb, projected, annualBudget }) : ""}
     <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
       ADA workloads tracked against group budget USD 244,000. Actual spend only — no shared alloc or Telstra diff applied.
     </div>
