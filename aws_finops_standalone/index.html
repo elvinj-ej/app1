@@ -2338,10 +2338,8 @@ function renderRunBurnRate() {
     </div>
     ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, pvb: projVsBudget, projected, annualBudget }) : ""}
     <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
-      <strong>How forecast is calculated:</strong>
       Annual forecast = sum of monthly <em>forecast_run</em> inputs entered for all 12 FY months (entered via the Inputs bar on the Detailed tab).
-      Spent YTD = sum of Run Cost FinOps totals (actual + shared cost allocation + Telstra invoice diff) for months with data.
-      Projected FY total = Spent YTD + average of last 3 actual months × remaining months in the FY.
+      Projected = Spent YTD + avg last 3 months × remaining months in the FY.
     </div>
   </div>`;
   el.style.display = "block";
