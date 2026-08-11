@@ -1086,10 +1086,10 @@ async function loadRunCost(month) {
       <table class="detail-tbl">${rpHead("hd-project")}<tbody>${mesRows}</tbody></table>
 
       <div class="section-label" style="margin-top:20px"><span class="dot" style="background:#E65100"></span>CNA</div>
-      <table class="detail-tbl"><thead style="background:#E65100;color:#fff"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th></th><th class="num">Budget/mo</th><th class="num">${mLabel} Actual</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${cnaRows}</tbody></table>
+      <table class="detail-tbl">${colgroup}<thead style="background:#E65100;color:#fff"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th class="num">Budget/mo</th><th class="num">${mLabel} Actual</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${cnaRows}</tbody></table>
 
       <div class="section-label" style="margin-top:20px"><span class="dot" style="background:#2E7D32"></span>ADA Projects <span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:8px">Actual spend only — no shared alloc or Telstra diff applied</span></div>
-      <table class="detail-tbl"><thead class="hd-ada"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th class="num">Budget/mo</th><th class="num">Actuals</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${adaRows}</tbody></table>
+      <table class="detail-tbl">${colgroup}<thead class="hd-ada"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th class="num">Budget/mo</th><th class="num">${mLabel} Actual</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${adaRows}</tbody></table>
 
       <div class="section-label" style="margin-top:20px"><span class="dot" style="background:var(--col-run)"></span>Grand Total Summary</div>
       <table class="detail-tbl">${grandHead}<tbody>${grandRows}</tbody></table>
