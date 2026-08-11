@@ -967,17 +967,35 @@ async function loadRunCost(month) {
   </tr>`;
   };
 
-  let pRows = nonAdaProj.map(makeProjectRow).join("");
-  const nonAdaBudget = nonAdaProj.reduce((s,r) => s + (r.budget_monthly||0), 0);
-  const nonAdaActual = nonAdaProj.reduce((s,r) => s + r.actual, 0);
-  const nonAdaFinops = nonAdaProj.reduce((s,r) => s + r.total, 0);
-  pRows += `<tr class="row-subtotal-project">
-    <td colspan="4"><strong>Total Project X-charge</strong></td>
-    <td class="num">${nonAdaBudget ? fmt(nonAdaBudget) : "—"}</td>
-    <td class="num">${fmt(nonAdaActual)}</td>
+  // ── MES table ─────────────────────────────────────────────────────────────
+  const mesRows_data = nonAdaProj.filter(r => r.workload === "MES");
+  const cnaRows_data = nonAdaProj.filter(r => r.workload === "CNA");
+
+  const mesBudget = mesRows_data.reduce((s,r) => s + (r.budget_monthly||0), 0);
+  const mesActual = mesRows_data.reduce((s,r) => s + r.actual, 0);
+  const mesFinops = mesRows_data.reduce((s,r) => s + r.total, 0);
+  let mesRows = mesRows_data.map(makeProjectRow).join("");
+  mesRows += `<tr class="row-subtotal-project">
+    <td colspan="4"><strong>Total MES</strong></td>
+    <td class="num">${mesBudget ? fmt(mesBudget) : "—"}</td>
+    <td class="num">${fmt(mesActual)}</td>
     <td class="num"></td>
-    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(nonAdaFinops)}</strong></td>` : ""}
-    <td class="num">—</td>
+    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(mesFinops)}</strong></td>` : ""}
+    <td class="num">${d.deviation_mes != null ? (d.deviation_mes > 0 ? "+" : "") + fmt(d.deviation_mes) : "—"}</td>
+  </tr>`;
+
+  // ── CNA table ─────────────────────────────────────────────────────────────
+  const cnaBudget = cnaRows_data.reduce((s,r) => s + (r.budget_monthly||0), 0);
+  const cnaActual = cnaRows_data.reduce((s,r) => s + r.actual, 0);
+  const cnaFinops = cnaRows_data.reduce((s,r) => s + r.total, 0);
+  let cnaRows = cnaRows_data.map(makeProjectRow).join("");
+  cnaRows += `<tr class="row-subtotal-project" style="background:#FBE9E7;color:#E65100">
+    <td colspan="4"><strong>Total CNA</strong></td>
+    <td class="num">${cnaBudget ? fmt(cnaBudget) : "—"}</td>
+    <td class="num">${fmt(cnaActual)}</td>
+    <td class="num"></td>
+    ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(cnaFinops)}</strong></td>` : ""}
+    <td class="num">${d.deviation_cna != null ? (d.deviation_cna > 0 ? "+" : "") + fmt(d.deviation_cna) : "—"}</td>
   </tr>`;
 
   const ADA_GROUP_BUDGET = 244_000 / 12;  // $20,333/mo — group total, not per-workload
@@ -1024,12 +1042,28 @@ async function loadRunCost(month) {
       <td class="num">${devFmt(d.deviation_run_vs_budget)}</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>Project X-charge</strong></td>
-      <td class="num">${fmt(d.total_project_budget)}</td>
-      <td class="num">${fmt(d.total_project_actual)}</td>
-      <td class="num">${fmt(d.total_project_shared_alloc)}</td>
-      ${hasTelstra ? `<td class="num">${fmt(d.total_project_telstra_diff)}</td><td class="num"><strong>${fmt(d.total_project_finops)}</strong></td>` : ""}
-      <td class="num">${devFmt(d.deviation_proj_vs_budget)}</td>
+      <td colspan="4"><strong>MES</strong></td>
+      <td class="num">${fmt(mesBudget)}</td>
+      <td class="num">${fmt(mesActual)}</td>
+      <td class="num">${fmt(mesRows_data.reduce((s,r)=>s+(r.shared_alloc||0),0))}</td>
+      ${hasTelstra ? `<td class="num">${fmt(mesRows_data.reduce((s,r)=>s+(r.telstra_diff||0),0))}</td><td class="num"><strong>${fmt(mesFinops)}</strong></td>` : ""}
+      <td class="num">${d.deviation_mes != null ? devFmt(d.deviation_mes) : "—"}</td>
+    </tr>
+    <tr>
+      <td colspan="4"><strong>CNA</strong></td>
+      <td class="num">${fmt(cnaBudget)}</td>
+      <td class="num">${fmt(cnaActual)}</td>
+      <td class="num">${fmt(cnaRows_data.reduce((s,r)=>s+(r.shared_alloc||0),0))}</td>
+      ${hasTelstra ? `<td class="num">${fmt(cnaRows_data.reduce((s,r)=>s+(r.telstra_diff||0),0))}</td><td class="num"><strong>${fmt(cnaFinops)}</strong></td>` : ""}
+      <td class="num">${d.deviation_cna != null ? devFmt(d.deviation_cna) : "—"}</td>
+    </tr>
+    <tr>
+      <td colspan="4"><strong>ADA Projects</strong></td>
+      <td class="num">${fmt(ADA_GROUP_BUDGET)}</td>
+      <td class="num">${fmt(adaActual)}</td>
+      <td class="num">—</td>
+      ${hasTelstra ? `<td class="num">—</td><td class="num"><strong>${fmt(adaFinops)}</strong></td>` : ""}
+      <td class="num">${devFmt(adaDev)}</td>
     </tr>
     <tr class="row-grand">
       <td colspan="4"><strong>GRAND TOTAL</strong></td>
@@ -1052,8 +1086,11 @@ async function loadRunCost(month) {
       <div class="section-label" style="margin-top:20px"><span class="dot dot-run"></span>Run Cost — Consumption</div>
       <table class="detail-tbl">${rpHead("hd-run")}<tbody>${rRows}</tbody></table>
 
-      <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>Project X-charge</div>
-      <table class="detail-tbl">${rpHead("hd-project")}<tbody>${pRows}</tbody></table>
+      <div class="section-label" style="margin-top:20px"><span class="dot dot-project"></span>MES</div>
+      <table class="detail-tbl">${rpHead("hd-project")}<tbody>${mesRows}</tbody></table>
+
+      <div class="section-label" style="margin-top:20px"><span class="dot" style="background:#E65100"></span>CNA</div>
+      <table class="detail-tbl"><thead style="background:#E65100;color:#fff"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th></th><th class="num">Budget/mo</th><th class="num">${mLabel} Actual</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${cnaRows}</tbody></table>
 
       <div class="section-label" style="margin-top:20px"><span class="dot" style="background:#2E7D32"></span>ADA Projects <span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:8px">Actual spend only — no shared alloc or Telstra diff applied</span></div>
       <table class="detail-tbl"><thead class="hd-ada"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th>Info</th><th class="num">Budget/mo</th><th class="num">Actuals</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${adaRows}</tbody></table>
