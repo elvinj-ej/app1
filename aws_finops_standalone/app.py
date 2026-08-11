@@ -869,6 +869,12 @@ def api_summary():
                     "non_ada_finops":          d["total_non_ada_finops"],
                     "mes_finops":              d["total_mes_finops"],
                     "cna_finops":              d["total_cna_finops"],
+                    "mes_actual":              d["total_mes_actual"],
+                    "cna_actual":              d["total_cna_actual"],
+                    "mes_shared_alloc":        d["total_mes_shared_alloc"],
+                    "cna_shared_alloc":        d["total_cna_shared_alloc"],
+                    "mes_telstra_diff":        d["total_mes_telstra_diff"],
+                    "cna_telstra_diff":        d["total_cna_telstra_diff"],
                     "run_workloads":           [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"], "budget_monthly": r.get("budget_monthly") or 0} for r in d["consumption_rows"]],
                     "project_workloads":       [{"name": r["workload"], "actual": r["actual"], "shared_alloc": r["shared_alloc"], "telstra_diff": r["telstra_diff"], "budget_monthly": r["budget_monthly"], "domain": r["domain"]} for r in d["project_rows"]],
                 })

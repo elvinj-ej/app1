@@ -1914,37 +1914,91 @@ function renderConsolidatedChart(elId, statusId, months) {
     }
     prevFY = fy;
 
-    const runH = m.run_finops > 0 ? (m.run_finops / yMax) * cH : 0;
-    const mesH = m.mes_finops > 0 ? (m.mes_finops / yMax) * cH : 0;
-    const cnaH = m.cna_finops > 0 ? (m.cna_finops / yMax) * cH : 0;
-    const adaH = m.ada_finops > 0 ? (m.ada_finops / yMax) * cH : 0;
-    const totalH = runH + mesH + cnaH + adaH;
-    const total  = (m.run_finops||0) + (m.mes_finops||0) + (m.cna_finops||0) + (m.ada_finops||0);
+    const COL_SHARED = "#9E9E9E", COL_TD = "#F0A500";
+    const gap = 1.5;
 
-    if (totalH > 0) {
-      const yBase  = PT + cH;
-      const yRun   = yBase - runH;
-      const yMes   = yRun  - mesH;
-      const yCna   = yMes  - cnaH;
-      const yAda   = yCna  - adaH;
+    // Helper: render 3-segment stack (actual + shared alloc + telstra diff) for one workload group
+    function stackGroup(actual, sharedAlloc, telstraDiff, baseColor, yTop) {
+      let segs = "", yC = yTop;
+      const aH = actual      > 0 ? (actual      / yMax) * cH : 0;
+      const sH = sharedAlloc > 0 ? (sharedAlloc / yMax) * cH : 0;
+      const tH = telstraDiff > 0 ? (telstraDiff / yMax) * cH : 0;
+      if (aH > 0.5) segs += `<rect x="${x.toFixed(1)}" y="${(yC-aH).toFixed(1)}" width="${barW.toFixed(1)}" height="${aH.toFixed(1)}" fill="${baseColor}" style="pointer-events:none"/>`;
+      yC -= aH;
+      if (sH > 0.5) {
+        segs += `<rect x="${x.toFixed(1)}" y="${(yC-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap}" fill="#fff" style="pointer-events:none"/>`;
+        segs += `<rect x="${x.toFixed(1)}" y="${(yC-gap-sH).toFixed(1)}" width="${barW.toFixed(1)}" height="${sH.toFixed(1)}" fill="${COL_SHARED}" style="pointer-events:none"/>`;
+        yC -= gap + sH;
+      }
+      if (tH > 0.5) {
+        segs += `<rect x="${x.toFixed(1)}" y="${(yC-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap}" fill="#fff" style="pointer-events:none"/>`;
+        segs += `<rect x="${x.toFixed(1)}" y="${(yC-gap-tH).toFixed(1)}" width="${barW.toFixed(1)}" height="${tH.toFixed(1)}" fill="${COL_TD}" style="pointer-events:none"/>`;
+        yC -= gap + tH;
+      }
+      return { segs, topY: yC };
+    }
 
-      const gap = 1.5; // white gap between segments
-      if (runH > 0.5) bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${yRun.toFixed(1)}" width="${barW.toFixed(1)}" height="${runH.toFixed(1)}" fill="${COL_RUN}" rx="2" data-month="${m.month}" data-seg="run"/>`;
-      if (mesH > 0.5) {
-        bars += `<rect x="${x.toFixed(1)}" y="${(yRun-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap.toFixed(1)}" fill="#fff" style="pointer-events:none"/>`;
-        bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${yMes.toFixed(1)}" width="${barW.toFixed(1)}" height="${mesH.toFixed(1)}" fill="${COL_MES}" data-month="${m.month}" data-seg="mes"/>`;
+    const runFinops = m.run_finops || 0;
+    const mesFinops = m.mes_finops || 0;
+    const cnaFinops = m.cna_finops || 0;
+    const adaFinops = m.ada_finops || 0;
+    const total     = runFinops + mesFinops + cnaFinops + adaFinops;
+    const totalH    = total > 0 ? (total / yMax) * cH : 0;
+
+    if (total > 0) {
+      const yBase = PT + cH;
+      let   yTop  = yBase;
+
+      // Run group — has its own sub-segments
+      const runActual = m.run_actual || runFinops;
+      const runShared = m.run_shared_alloc || 0;
+      const runTD     = m.run_telstra_diff || 0;
+      const runResult = stackGroup(runActual, runShared, runTD, COL_RUN, yTop);
+      // Invisible hit-target rect over whole run group
+      const runGroupH = (total > 0 ? (runFinops / yMax) * cH : 0);
+      if (runGroupH > 0.5) {
+        bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${(yBase-runGroupH).toFixed(1)}" width="${barW.toFixed(1)}" height="${runGroupH.toFixed(1)}" fill="transparent" data-month="${m.month}" data-seg="run"/>`;
+        bars += runResult.segs;
       }
-      if (cnaH > 0.5) {
-        bars += `<rect x="${x.toFixed(1)}" y="${(yMes-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap.toFixed(1)}" fill="#fff" style="pointer-events:none"/>`;
-        bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${yCna.toFixed(1)}" width="${barW.toFixed(1)}" height="${cnaH.toFixed(1)}" fill="${COL_CNA}" data-month="${m.month}" data-seg="cna"/>`;
-      }
-      if (adaH > 0.5) {
-        bars += `<rect x="${x.toFixed(1)}" y="${(yCna-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap.toFixed(1)}" fill="#fff" style="pointer-events:none"/>`;
-        bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${yAda.toFixed(1)}" width="${barW.toFixed(1)}" height="${adaH.toFixed(1)}" fill="${COL_ADA}" data-month="${m.month}" data-seg="ada"/>`;
+      yTop = yBase - runGroupH;
+
+      // MES group
+      if (mesFinops > 0) {
+        const mesActual = m.mes_actual || mesFinops;
+        const mesShared = m.mes_shared_alloc || 0;
+        const mesTD     = m.mes_telstra_diff || 0;
+        const mesGroupH = (mesFinops / yMax) * cH;
+        bars += `<rect x="${x.toFixed(1)}" y="${(yTop-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap}" fill="#fff" style="pointer-events:none"/>`;
+        bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${(yTop-gap-mesGroupH).toFixed(1)}" width="${barW.toFixed(1)}" height="${mesGroupH.toFixed(1)}" fill="transparent" data-month="${m.month}" data-seg="mes"/>`;
+        const mesResult = stackGroup(mesActual, mesShared, mesTD, COL_MES, yTop - gap);
+        bars += mesResult.segs;
+        yTop -= gap + mesGroupH;
       }
 
+      // CNA group
+      if (cnaFinops > 0) {
+        const cnaActual = m.cna_actual || cnaFinops;
+        const cnaShared = m.cna_shared_alloc || 0;
+        const cnaTD     = m.cna_telstra_diff || 0;
+        const cnaGroupH = (cnaFinops / yMax) * cH;
+        bars += `<rect x="${x.toFixed(1)}" y="${(yTop-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap}" fill="#fff" style="pointer-events:none"/>`;
+        bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${(yTop-gap-cnaGroupH).toFixed(1)}" width="${barW.toFixed(1)}" height="${cnaGroupH.toFixed(1)}" fill="transparent" data-month="${m.month}" data-seg="cna"/>`;
+        const cnaResult = stackGroup(cnaActual, cnaShared, cnaTD, COL_CNA, yTop - gap);
+        bars += cnaResult.segs;
+        yTop -= gap + cnaGroupH;
+      }
+
+      // ADA group — actual only, no shared/telstra
+      if (adaFinops > 0) {
+        const adaGroupH = (adaFinops / yMax) * cH;
+        bars += `<rect x="${x.toFixed(1)}" y="${(yTop-gap).toFixed(1)}" width="${barW.toFixed(1)}" height="${gap}" fill="#fff" style="pointer-events:none"/>`;
+        bars += `<rect class="chart-bar" x="${x.toFixed(1)}" y="${(yTop-gap-adaGroupH).toFixed(1)}" width="${barW.toFixed(1)}" height="${adaGroupH.toFixed(1)}" fill="${COL_ADA}" data-month="${m.month}" data-seg="ada"/>`;
+        yTop -= gap + adaGroupH;
+      }
+
+      const topOfBar = yTop + gap;
       if (totalH > 18)
-        bars += `<text x="${xC.toFixed(1)}" y="${(Math.min(yAda, yRun)-4).toFixed(1)}" text-anchor="middle" font-size="5" font-weight="600" fill="#3a3a3a" style="pointer-events:none">$${(total/1000).toFixed(0)}k</text>`;
+        bars += `<text x="${xC.toFixed(1)}" y="${(topOfBar - 4).toFixed(1)}" text-anchor="middle" font-size="5" font-weight="600" fill="#3a3a3a" style="pointer-events:none">$${(total/1000).toFixed(0)}k</text>`;
     }
 
     const lbl = dt.toLocaleDateString("en-AU", {month:"short", year:"2-digit"});
@@ -1957,13 +2011,15 @@ function renderConsolidatedChart(elId, statusId, months) {
     [COL_MES, "MES"],
     [COL_CNA, "CNA"],
     [COL_ADA, "ADA Projects"],
+    ["#9E9E9E", "Shared Alloc"],
+    ["#F0A500", "Telstra Diff"],
   ];
   let legX = PL;
   let legendSvg = "";
   leg.forEach(([col, label]) => {
     legendSvg += `<rect x="${legX}" y="9" width="10" height="8" fill="${col}" rx="2"/>`;
     legendSvg += `<text x="${legX+14}" y="16" font-size="5.5" fill="#52514e">${label}</text>`;
-    legX += 90;
+    legX += 86;
   });
 
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible" font-family="'Segoe UI',system-ui,sans-serif">
@@ -2015,22 +2071,24 @@ function showConsolidatedTip(e, bar, months) {
     </div>`;
   }
 
-  const seg = (label, val, col, fc) => {
-    const devStr = fc != null && val != null ? ` <span style="color:${val>fc?"#f0a0a0":"#8de8a0"};font-size:.73rem">(${val>fc?"+":""}${fmt(val-fc)} vs forecast)</span>` : "";
-    return `<div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+  function segRow(label, finops, actual, shared, td, col, fc) {
+    const devStr = fc != null && finops != null ? ` <span style="color:${finops>fc?"#f0a0a0":"#8de8a0"};font-size:.71rem">(${finops>fc?"+":""}${fmt(finops-fc)} vs fc)</span>` : "";
+    const sub = (shared || td) ? `<div style="font-size:.7rem;color:#bbb;padding-left:13px">
+      Actual ${fmt(actual)}${shared ? ` · Shared ${fmt(shared)}` : ""}${td ? ` · Telstra ${fmt(td)}` : ""}</div>` : "";
+    return `<div style="display:flex;align-items:center;gap:5px;margin-top:4px">
       <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${col};flex-shrink:0"></span>
-      <span>${label}: <strong>${fmt(val||0)}</strong>${devStr}</span>
-    </div>`;
-  };
+      <span>${label}: <strong>${fmt(finops||0)}</strong>${devStr}</span>
+    </div>${sub}`;
+  }
 
   tip.innerHTML = `<strong style="font-size:.82rem">${lbl}</strong>
     <div style="font-size:.75rem;margin-top:2px;color:#bbb">Grand Total: <strong style="color:#fff">${fmt(total)}</strong></div>
     ${projHtml}
-    <div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;font-size:.76rem;line-height:1.9">
-      ${seg("Run Cost",    mData.run_finops, "#90A4BC", mData.forecast_run)}
-      ${seg("MES",         mData.mes_finops, "#CE93D8", mData.forecast_mes)}
-      ${seg("CNA",         mData.cna_finops, "#FFAB76", mData.forecast_cna)}
-      ${seg("ADA Projects",mData.ada_finops, "#81C784", mData.forecast_ada)}
+    <div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;font-size:.76rem;line-height:1.6">
+      ${segRow("Run Cost",     mData.run_finops, mData.run_actual,  mData.run_shared_alloc,  mData.run_telstra_diff,  "#90A4BC", mData.forecast_run)}
+      ${segRow("MES",          mData.mes_finops, mData.mes_actual,  mData.mes_shared_alloc,  mData.mes_telstra_diff,  "#CE93D8", mData.forecast_mes)}
+      ${segRow("CNA",          mData.cna_finops, mData.cna_actual,  mData.cna_shared_alloc,  mData.cna_telstra_diff,  "#FFAB76", mData.forecast_cna)}
+      ${segRow("ADA Projects", mData.ada_finops, mData.ada_finops,  0,                        0,                       "#81C784", mData.forecast_ada)}
     </div>`;
   tip.style.display = "block";
   posBarTip(e);

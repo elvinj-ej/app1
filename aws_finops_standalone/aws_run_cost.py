@@ -324,10 +324,16 @@ def compute(month: str) -> dict:
     total_ada_finops     = sum(r["total"] for r in ada_rows)
     total_non_ada_finops = sum(r["total"] for r in non_ada_rows)
     # Per-workload totals for MES and CNA
-    mes_rows         = [r for r in project_rows if r["workload"] == "MES"]
-    cna_rows         = [r for r in project_rows if r["workload"] == "CNA"]
-    total_mes_finops = sum(r["total"] for r in mes_rows)
-    total_cna_finops = sum(r["total"] for r in cna_rows)
+    mes_rows              = [r for r in project_rows if r["workload"] == "MES"]
+    cna_rows              = [r for r in project_rows if r["workload"] == "CNA"]
+    total_mes_finops      = sum(r["total"]          for r in mes_rows)
+    total_cna_finops      = sum(r["total"]          for r in cna_rows)
+    total_mes_actual      = sum(r["actual"]         for r in mes_rows)
+    total_cna_actual      = sum(r["actual"]         for r in cna_rows)
+    total_mes_shared_alloc= sum(r["shared_alloc"]   for r in mes_rows)
+    total_cna_shared_alloc= sum(r["shared_alloc"]   for r in cna_rows)
+    total_mes_telstra_diff= sum(r["telstra_diff"]   for r in mes_rows)
+    total_cna_telstra_diff= sum(r["telstra_diff"]   for r in cna_rows)
 
     return {
         "month":                    month,
@@ -359,8 +365,14 @@ def compute(month: str) -> dict:
         "total_project_finops":      total_project_finops,
         "total_ada_finops":          total_ada_finops,
         "total_non_ada_finops":      total_non_ada_finops,
-        "total_mes_finops":          total_mes_finops,
-        "total_cna_finops":          total_cna_finops,
+        "total_mes_finops":           total_mes_finops,
+        "total_cna_finops":           total_cna_finops,
+        "total_mes_actual":           total_mes_actual,
+        "total_cna_actual":           total_cna_actual,
+        "total_mes_shared_alloc":     total_mes_shared_alloc,
+        "total_cna_shared_alloc":     total_cna_shared_alloc,
+        "total_mes_telstra_diff":     total_mes_telstra_diff,
+        "total_cna_telstra_diff":     total_cna_telstra_diff,
         "total_consumption_budget":  total_consumption_budget,
         "total_project_budget":      total_project_budget,
         "grand_total":              grand_total,
