@@ -389,7 +389,6 @@ input[type=file]{display:none}
   </div>
   <!-- Burn rate banners -->
   <div id="run-burn-rate"     style="display:none;margin-bottom:10px"></div>
-  <div id="other-burn-rate"   style="display:none;margin-bottom:10px"></div>
   <div id="project-burn-rate" style="display:none;margin-bottom:16px"></div>
   <!-- Charts stacked vertically -->
   <div style="display:flex;flex-direction:column;gap:16px">
@@ -2457,7 +2456,6 @@ function updateSummaryKPIs(months) {
   document.getElementById("sum-kpi-avg").textContent     = count ? fmt(totalRun / count) : "—";
   renderFYHero();
   renderRunBurnRate();
-  renderOtherBurnRate();
   renderProjectBurnRate();
 }
 
