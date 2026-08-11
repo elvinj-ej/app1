@@ -1280,14 +1280,23 @@ async function loadWorkloads() {
   const shared      = wls.filter(w => w.cost_category === "Shared");
   const consumption = wls.filter(w => w.cost_category === "Consumption");
   const allProject  = wls.filter(w => w.cost_category === "Project");
-  const project     = allProject.filter(w => w.domain !== "ADA");
-  const adaProject  = allProject.filter(w => w.domain === "ADA");
+  const adaProject  = allProject.filter(w => (w.domain||"").toUpperCase() === "ADA");
+  const nonAdaProj  = allProject.filter(w => (w.domain||"").toUpperCase() !== "ADA");
+  const mesProject  = nonAdaProj.filter(w => (w.domain||"").toUpperCase() === "MES" || w.name === "MES");
+  const cnaProject  = nonAdaProj.filter(w => (w.domain||"").toUpperCase() === "CNA" || w.name === "CNA");
+  const otherProject= nonAdaProj.filter(w => !mesProject.includes(w) && !cnaProject.includes(w));
   const other       = wls.filter(w => w.cost_category === "Other");
 
-  const COLS = 9; // Workload, Domain, Budget Mgr, Budget/mo, Description, CUR Tag, Accounts, Actions
+  // Shared colgroup for all workload tables — keeps columns aligned across sections
+  const WL_COL_W = ["180px","110px","150px","110px","1fr","130px","130px","110px"];
+  const wlColgroup = `<colgroup>
+    <col style="width:180px"><col style="width:110px"><col style="width:150px">
+    <col style="width:110px"><col><col style="width:130px">
+    <col style="width:130px"><col style="width:110px">
+  </colgroup>`;
 
   function wlHead(bg) {
-    return `<thead><tr style="background:${bg};color:#fff">
+    return `${wlColgroup}<thead><tr style="background:${bg};color:#fff">
       <th>Workload</th><th>Domain</th><th>Budget Manager</th>
       <th class="num">Budget/mo</th><th>Description</th><th>CUR Tag</th>
       <th>Account Details</th><th></th>
@@ -1307,11 +1316,12 @@ async function loadWorkloads() {
       <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick='delWL(${JSON.stringify(w.name)})'>Del</button>
     </td></tr>`).join("");
 
-  function makeTable(label, color, list) {
+  function makeTable(label, color, list, subtitle) {
     const countBadge = `<span style="background:rgba(0,0,0,.12);padding:1px 7px;border-radius:10px;font-size:.75rem;margin-left:8px">${list.length}</span>`;
+    const sub = subtitle ? `<span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:12px">${subtitle}</span>` : "";
     return `
     <div class="section-label" style="margin-top:20px;color:${color}">
-      <span class="dot" style="background:${color}"></span>${label}${countBadge}
+      <span class="dot" style="background:${color}"></span>${label}${countBadge}${sub}
     </div>
     <div class="tbl-wrap"><table>${wlHead(color)}<tbody>${makeRows(list)}</tbody></table></div>`;
   }
@@ -1352,12 +1362,18 @@ async function loadWorkloads() {
     ${adaBudgetNote}`;
   }
 
+  const mesCnaOther = otherProject.length
+    ? makeTable("Project X-charge — Other", "var(--col-project)", otherProject)
+    : "";
+
   document.getElementById("wl-wrap").innerHTML =
-    makeTable("Shared Cost Accounts",        "var(--col-shared)",  shared)      +
-    makeTable("Run Cost — Consumption",       "var(--col-run)",     consumption) +
-    makeTable("Project X-charge",            "var(--col-project)", project)     +
-    makeAdaTable("ADA Projects",             adaProject)                        +
-    makeTable('Other — grouped under Run Cost "Other" row', "#E65100", other)   +
+    makeTable("Shared Cost Accounts",   "var(--col-shared)", shared)      +
+    makeTable("Run Cost — Consumption", "var(--col-run)",    consumption) +
+    makeTable("MES",   "#6A1B9A", mesProject, "MES project workloads — shared alloc &amp; Telstra diff applied") +
+    makeTable("CNA",   "#E65100", cnaProject, "CNA project workloads — shared alloc &amp; Telstra diff applied") +
+    mesCnaOther                                                            +
+    makeAdaTable("ADA Projects", adaProject)                               +
+    makeTable('Other — grouped under Run Cost "Other" row', "#9E9E9E", other) +
     unassignedSection;
 }
 
