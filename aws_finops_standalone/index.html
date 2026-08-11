@@ -2280,12 +2280,13 @@ function burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected,
 }
 
 /// ── Burn rate watch analysis note ────────────────────────────────────────────
-function burnWatchNote({ overPace, pct, elapsedFrac, moCount, pvb, projected, annualBudget }) {
+function burnWatchNote({ overPace, pct, elapsedFrac, pvb, projected, annualBudget }) {
   const reasons = [];
   if (overPace) {
-    const spentPct   = (pct   != null ? pct.toFixed(1)              : "—") + "%";
+    const spentPct   = (pct        != null ? pct.toFixed(1)              : "—") + "%";
     const elapsedPct = (elapsedFrac != null ? (elapsedFrac*100).toFixed(1) : "—") + "%";
-    reasons.push(`${spentPct} of forecast consumed with ${elapsedPct} of the year elapsed (${moCount} month${moCount!==1?"s":""}) — spending faster than the budgeted rate`);
+    const elapsedMos = elapsedFrac != null ? (elapsedFrac * 12).toFixed(1) : "—";
+    reasons.push(`${spentPct} of forecast consumed with only ${elapsedPct} of the year elapsed (~${elapsedMos} months) — spending faster than the budgeted rate`);
   }
   if (pvb != null && pvb > 0) {
     reasons.push(`projected year-end ${fmt(projected)} exceeds annual forecast by ${fmt(pvb)}`);
@@ -2313,8 +2314,10 @@ function renderRunBurnRate() {
   const avgMonthly   = last3.length ? last3.reduce((s,m) => s + (m.run_finops||0), 0) / last3.length : 0;
   const projected    = spent + avgMonthly * remainingMos;
   const projVsBudget = annualBudget > 0 ? projected - annualBudget : null;
-  const elapsedFrac  = annualBudget > 0 && actualMonths.length > 0 ? actualMonths.length / 12 : null;
-  const overPace     = elapsedFrac != null && (spent / annualBudget) > elapsedFrac;
+  const fyStartDate  = new Date(`${fyStartYear}-07-01`);
+  const fyEndDate    = new Date(`${displayFY}-07-01`);
+  const elapsedFrac  = annualBudget > 0 ? Math.min(1, Math.max(0, (new Date() - fyStartDate) / (fyEndDate - fyStartDate))) : null;
+  const overPace     = elapsedFrac != null && elapsedFrac > 0 && (spent / annualBudget) > elapsedFrac;
   const isOnTrack    = !overPace && (projVsBudget == null || projVsBudget <= 0);
   const icon      = isOnTrack ? "✓" : "⚠";
   const status    = fyComplete
@@ -2333,7 +2336,7 @@ function renderRunBurnRate() {
       ${burnRateBar(pct, annualBudget)}
       ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget, fyComplete })}
     </div>
-    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, moCount: actualMonths.length, pvb: projVsBudget, projected, annualBudget }) : ""}
+    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, pvb: projVsBudget, projected, annualBudget }) : ""}
     <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
       <strong>How forecast is calculated:</strong>
       Annual forecast = sum of monthly <em>forecast_run</em> inputs entered for all 12 FY months (entered via the Inputs bar on the Detailed tab).
@@ -2356,8 +2359,10 @@ function _projectBurnBox(el, name, accentColor, borderColor, bgColor, fyData, ac
   const avgMo        = last3.length ? last3.reduce((s,m) => s + (m[finopsKey]||0), 0) / last3.length : 0;
   const projected    = spent + avgMo * remainingMos;
   const pvb          = annualBudget > 0 ? projected - annualBudget : null;
-  const elapsedFrac  = annualBudget > 0 && actualMonths.length > 0 ? actualMonths.length / 12 : null;
-  const overPace     = elapsedFrac != null && (spent / annualBudget) > elapsedFrac;
+  const fyStartDate  = new Date(`${fyStartYear}-07-01`);
+  const fyEndDate    = new Date(`${displayFY}-07-01`);
+  const elapsedFrac  = annualBudget > 0 ? Math.min(1, Math.max(0, (new Date() - fyStartDate) / (fyEndDate - fyStartDate))) : null;
+  const overPace     = elapsedFrac != null && elapsedFrac > 0 && (spent / annualBudget) > elapsedFrac;
   const isOnTrack    = !overPace && (pvb == null || pvb <= 0);
   const barColor     = pct == null ? "#ccc" : pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
   const statusCol    = isOnTrack ? "#2E7D32" : "#C0392B";
@@ -2373,7 +2378,7 @@ function _projectBurnBox(el, name, accentColor, borderColor, bgColor, fyData, ac
       ${burnRateBar(pct, annualBudget)}
       ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget: pvb, fyComplete })}
     </div>
-    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, moCount: actualMonths.length, pvb, projected, annualBudget }) : ""}
+    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, pvb, projected, annualBudget }) : ""}
     <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
       Annual forecast = sum of monthly <em>${fcKey}</em> entries across all 12 FY months.
       Projected = Spent YTD + avg last 3 months × ${remainingMos} remaining months.
@@ -2407,8 +2412,10 @@ function renderADABurnRate() {
   const avgMo      = last3.length ? last3.reduce((s,m) => s + (m.ada_finops||0), 0) / last3.length : 0;
   const projected    = spent + avgMo * remainingMos;
   const pvb          = projected - annualBudget;
-  const elapsedFrac  = actualMonths.length > 0 ? actualMonths.length / 12 : null;
-  const overPace     = elapsedFrac != null && (spent / annualBudget) > elapsedFrac;
+  const fyStartDate  = new Date(`${fyStartYear}-07-01`);
+  const fyEndDate    = new Date(`${displayFY}-07-01`);
+  const elapsedFrac  = Math.min(1, Math.max(0, (new Date() - fyStartDate) / (fyEndDate - fyStartDate)));
+  const overPace     = elapsedFrac > 0 && (spent / annualBudget) > elapsedFrac;
   const isOnTrack    = !overPace && pvb <= 0;
   const barColor   = pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
   const statusCol  = isOnTrack ? "#2E7D32" : "#C0392B";
@@ -2423,7 +2430,7 @@ function renderADABurnRate() {
       ${burnRateBar(pct, annualBudget)}
       ${burnRateKPIs({ spent, annualBudget, remaining, remainingMos, projected, projVsBudget: pvb, fyComplete })}
     </div>
-    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, moCount: actualMonths.length, pvb, projected, annualBudget }) : ""}
+    ${!isOnTrack ? burnWatchNote({ overPace, pct, elapsedFrac, pvb, projected, annualBudget }) : ""}
     <div style="font-size:.72rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
       ADA workloads tracked against group budget USD 244,000. Actual spend only — no shared alloc or Telstra diff applied.
     </div>
