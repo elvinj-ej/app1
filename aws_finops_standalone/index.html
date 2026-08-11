@@ -2084,7 +2084,7 @@ function renderProjectBurnRate() {
     if (annualBudget > 0) {
       // Projects with annual forecast — full burn rate row
       return `
-      <div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px">
+      <div style="border:1px solid #CE93D8;border-radius:6px;padding:12px 16px;margin-bottom:8px;background:#F3E5F5">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
           <strong style="font-size:.9rem;color:var(--navy)">${name}</strong>
           <span style="font-size:.78rem;font-weight:700;color:${statusCol}">${isOnTrack ? "✓ On track" : "⚠ Watch"}</span>
@@ -2124,7 +2124,7 @@ function renderProjectBurnRate() {
     } else {
       // Projects without annual forecast — monthly run rate only (actual spend, no shared alloc / telstra diff)
       return `
-      <div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px">
+      <div style="border:1px solid #CE93D8;border-radius:6px;padding:12px 16px;margin-bottom:8px;background:#F3E5F5">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
           <strong style="font-size:.9rem;color:var(--navy)">${name}</strong>
           <span style="font-size:.75rem;color:var(--muted)">No annual forecast — actual spend only (excl. shared alloc &amp; Telstra diff)</span>
