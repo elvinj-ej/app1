@@ -1639,7 +1639,8 @@ async function saveMktAdj(adjustment, note, po_number = "", purchaser_name = "")
 }
 
 // ── Summary ────────────────────────────────────────────────────────────────────
-let summaryData  = [];
+let summaryData   = [];
+let workloadSparklines = {};  // name → [{month, actual}]  — loaded with summary
 let sumSelFY     = null;
 let sumSelMonths = new Set();
 let sumMktOnly   = false;
@@ -1659,10 +1660,12 @@ function getFY(monthStr) {
 const fyLabel = fy => `FY${String(fy).slice(-2)}`;
 
 async function loadSummary() {
-  const [d, mD] = await Promise.all([
+  const [d, mD, spkD] = await Promise.all([
     fetch(API + "/summary").then(r => r.json()).catch(() => ({months:[]})),
     fetch(API + "/months").then(r => r.json()).catch(() => ({})),
+    fetch(API + "/sparklines").then(r => r.json()).catch(() => ({sparklines:{}})),
   ]);
+  workloadSparklines = spkD.sparklines || {};
   summaryData = d.months || [];
   if (mD.last_upload_utc) {
     document.getElementById("sum-last-upload-ts").textContent = fmtAEST(mD.last_upload_utc);
@@ -2134,27 +2137,23 @@ function showConsolidatedTip(e, bar, months) {
   const lbl = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
   const total = (mData.run_finops||0)+(mData.mes_finops||0)+(mData.cna_finops||0)+(mData.ada_finops||0);
 
-  // Top movers vs prior month (>$10k increase)
+  // Top workload movers vs prior month (>$5k increase)
   let moversHtml = "";
   if (prev) {
-    const cats = [
-      { label: "Run Cost", key: "run_finops", col: "#90A4BC" },
-      { label: "MES",      key: "mes_finops", col: "#CE93D8" },
-      { label: "CNA",      key: "cna_finops", col: "#FFAB76" },
-      { label: "ADA",      key: "ada_finops", col: "#81C784" },
-    ];
-    const movers = cats
-      .map(c => ({ ...c, delta: (mData[c.key]||0) - (prev[c.key]||0) }))
-      .filter(c => c.delta > 10000)
-      .sort((a,b) => b.delta - a.delta)
+    const prevMonth = prev.month;
+    const movers = Object.entries(workloadSparklines)
+      .map(([name, wl]) => {
+        const cur  = (wl.months.find(m => m.month === month)  || {}).actual || 0;
+        const prv  = (wl.months.find(m => m.month === prevMonth) || {}).actual || 0;
+        return { name, delta: cur - prv };
+      })
+      .filter(w => w.delta > 5000)
+      .sort((a, b) => b.delta - a.delta)
       .slice(0, 3);
     if (movers.length) {
       moversHtml = `<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;font-size:.73rem;color:#ffd97d">
         <strong>⬆ Top increases vs last month:</strong>
-        ${movers.map(c => `<div style="display:flex;align-items:center;gap:5px;margin-top:3px">
-          <span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${c.col};flex-shrink:0"></span>
-          <span>${c.label}: <strong>+${fmt(c.delta)}</strong></span>
-        </div>`).join("")}
+        ${movers.map(w => `<div style="margin-top:3px">${w.name}: <strong>+${fmt(w.delta)}</strong></div>`).join("")}
       </div>`;
     }
   }
