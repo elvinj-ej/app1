@@ -781,8 +781,37 @@ document.getElementById("save-inputs-btn").addEventListener("click", async () =>
 });
 
 // ── Run Cost table ────────────────────────────────────────────────────────────
+// ── Sparkline SVG helper ──────────────────────────────────────────────────────
+function sparklineSvg(monthlyData, budgetMonthly) {
+  if (!monthlyData || monthlyData.length < 2) return "";
+  const vals = monthlyData.map(m => m.actual);
+  const last3 = vals.slice(-3);
+  const overBudget = budgetMonthly > 0 && last3.some(v => v > budgetMonthly);
+  const color = overBudget ? "#E53935" : "#2E7D32";
+  const W = 52, H = 18, pad = 2;
+  const max = Math.max(...vals, budgetMonthly || 0) * 1.05 || 1;
+  const min = 0;
+  const xs = vals.map((_, i) => pad + (i / (vals.length - 1)) * (W - pad * 2));
+  const ys = vals.map(v => H - pad - ((v - min) / (max - min)) * (H - pad * 2));
+  const path = xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  const budgetY = budgetMonthly > 0 ? (H - pad - ((budgetMonthly - min) / (max - min)) * (H - pad * 2)).toFixed(1) : null;
+  const budgetLine = budgetY != null
+    ? `<line x1="${pad}" y1="${budgetY}" x2="${W - pad}" y2="${budgetY}" stroke="#F0A500" stroke-width="1" stroke-dasharray="2,2" opacity=".7"/>`
+    : "";
+  const dot = `<circle cx="${xs[xs.length-1].toFixed(1)}" cy="${ys[ys.length-1].toFixed(1)}" r="2.5" fill="${color}"/>`;
+  return `<svg width="${W}" height="${H}" style="vertical-align:middle;margin-left:6px" title="6-month trend · ${overBudget?"Over budget in last 3 months":"Within budget"}">
+    ${budgetLine}
+    <polyline points="${xs.map((x,i)=>`${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+    ${dot}
+  </svg>`;
+}
+
 async function loadRunCost(month) {
-  const d = await fetch(`${API}/run-cost?month=${month}`).then(r => r.json());
+  const [d, spkData] = await Promise.all([
+    fetch(`${API}/run-cost?month=${month}`).then(r => r.json()),
+    fetch(`${API}/sparklines`).then(r => r.json()).catch(() => ({ sparklines: {} })),
+  ]);
+  const sparklines = spkData.sparklines || {};
   if (d.error) { document.getElementById("runcost-wrap").innerHTML = `<div class="alert alert-err">${d.error}</div>`; return; }
 
   const hasTelstra = !!d.telstra_invoice;
@@ -925,13 +954,17 @@ async function loadRunCost(month) {
   </tr>`;
 
   // ── Run Cost table ────────────────────────────────────────────────────────
-  let rRows = d.consumption_rows.map(r => `<tr class="${r.workload==="Other"?"row-other":""}">
-    <td>${r.workload}${r.workload!=="Other" ? momIndicator(r.workload, r.actual) : ""}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
+  let rRows = d.consumption_rows.map(r => {
+    const rSpk = sparklines[r.workload];
+    const rSpkSvg = (rSpk && r.workload !== "Other") ? sparklineSvg(rSpk.months, rSpk.budget_monthly) : "";
+    return `<tr class="${r.workload==="Other"?"row-other":""}">
+    <td>${r.workload}${r.workload!=="Other" ? momIndicator(r.workload, r.actual) : ""}${rSpkSvg}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>
     ${rpTelstra(r)}${devCell(r.deviation)}
-  </tr>`).join("");
+  </tr>`;
+  }).join("");
   rRows += `<tr class="row-subtotal-run">
     <td colspan="3"><strong>Total Run Cost</strong></td>
     <td class="num">${fmt(d.total_consumption_budget)}</td>
@@ -954,8 +987,10 @@ async function loadRunCost(month) {
            style="margin-left:6px;padding:2px 8px;font-size:.72rem;background:linear-gradient(135deg,#1B7340,#27AE60);color:#fff;border:none;border-radius:4px;cursor:pointer;vertical-align:middle">
            ✉ Email</button>`
       : "";
+    const spk = sparklines[r.workload];
+    const spkSvg = spk ? sparklineSvg(spk.months, spk.budget_monthly) : "";
     return `<tr>
-    <td>${r.workload}${emailBtn}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
+    <td>${r.workload}${emailBtn}${spkSvg}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>
@@ -1074,7 +1109,35 @@ async function loadRunCost(month) {
     ? '<p style="font-size:.78rem;color:var(--muted);margin-top:8px">Enter the Telstra Invoice above to see Shared Alloc, Telstra Diff and FinOps Total columns.</p>'
     : "";
 
+  // ── Domain spend card ─────────────────────────────────────────────────────
+  const domainMap = {};
+  [...d.consumption_rows, ...d.project_rows, ...d.shared_rows].forEach(r => {
+    const dom = r.domain || "Other";
+    if (!domainMap[dom]) domainMap[dom] = 0;
+    domainMap[dom] += r.actual || 0;
+  });
+  const domainTotal = Object.values(domainMap).reduce((s,v) => s+v, 0);
+  const domainRows = Object.entries(domainMap)
+    .sort((a,b) => b[1]-a[1])
+    .map(([dom, amt]) => {
+      const pct = domainTotal > 0 ? (amt/domainTotal*100) : 0;
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <span style="font-size:.78rem;min-width:70px;color:var(--navy);font-weight:600">${dom}</span>
+        <div style="flex:1;background:var(--border);border-radius:3px;height:7px;overflow:hidden">
+          <div style="width:${pct.toFixed(1)}%;height:100%;background:#2B3752;border-radius:3px"></div>
+        </div>
+        <span style="font-size:.76rem;color:var(--muted);min-width:65px;text-align:right">${fmt(amt)}</span>
+        <span style="font-size:.72rem;color:var(--muted);min-width:32px;text-align:right">${pct.toFixed(0)}%</span>
+      </div>`;
+    }).join("");
+  const domainCard = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:16px;display:inline-block;min-width:320px;vertical-align:top">
+    <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--navy);margin-bottom:10px">Spend by Domain / Outcome Group</div>
+    ${domainRows}
+    <div style="font-size:.72rem;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:6px">Total actuals: <strong>${fmt(domainTotal)}</strong></div>
+  </div>`;
+
   document.getElementById("runcost-wrap").innerHTML = `
+    <div style="margin-bottom:4px">${domainCard}</div>
     <div class="tbl-wrap">
       <div class="section-label"><span class="dot dot-shared"></span>Shared Cost Accounts</div>
       <table class="detail-tbl">${sharedHead}<tbody>${sRows}</tbody></table>
@@ -2062,12 +2125,39 @@ function renderConsolidatedChart(elId, statusId, months) {
 function showConsolidatedTip(e, bar, months) {
   const tip   = document.getElementById("chart-tooltip");
   const month = bar.dataset.month;
-  const mData = months.find(m => m.month === month);
+  const idx   = months.findIndex(m => m.month === month);
+  const mData = months[idx];
   if (!mData) return;
+  const prev  = idx > 0 ? months[idx - 1] : null;
 
   const dt  = new Date(month);
   const lbl = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
   const total = (mData.run_finops||0)+(mData.mes_finops||0)+(mData.cna_finops||0)+(mData.ada_finops||0);
+
+  // Top movers vs prior month (>$10k increase)
+  let moversHtml = "";
+  if (prev) {
+    const cats = [
+      { label: "Run Cost", key: "run_finops", col: "#90A4BC" },
+      { label: "MES",      key: "mes_finops", col: "#CE93D8" },
+      { label: "CNA",      key: "cna_finops", col: "#FFAB76" },
+      { label: "ADA",      key: "ada_finops", col: "#81C784" },
+    ];
+    const movers = cats
+      .map(c => ({ ...c, delta: (mData[c.key]||0) - (prev[c.key]||0) }))
+      .filter(c => c.delta > 10000)
+      .sort((a,b) => b.delta - a.delta)
+      .slice(0, 3);
+    if (movers.length) {
+      moversHtml = `<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;font-size:.73rem;color:#ffd97d">
+        <strong>⬆ Top increases vs last month:</strong>
+        ${movers.map(c => `<div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+          <span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${c.col};flex-shrink:0"></span>
+          <span>${c.label}: <strong>+${fmt(c.delta)}</strong></span>
+        </div>`).join("")}
+      </div>`;
+    }
+  }
 
   // Projected month-end for current month
   const today = new Date();
@@ -2101,7 +2191,8 @@ function showConsolidatedTip(e, bar, months) {
       ${segRow("MES",          mData.mes_finops, mData.mes_actual,  mData.mes_shared_alloc,  mData.mes_telstra_diff,  "#CE93D8", mData.forecast_mes)}
       ${segRow("CNA",          mData.cna_finops, mData.cna_actual,  mData.cna_shared_alloc,  mData.cna_telstra_diff,  "#FFAB76", mData.forecast_cna)}
       ${segRow("ADA Projects", mData.ada_finops, mData.ada_finops,  0,                        0,                       "#81C784", mData.forecast_ada)}
-    </div>`;
+    </div>
+    ${moversHtml}`;
   tip.style.display = "block";
   posBarTip(e);
 }

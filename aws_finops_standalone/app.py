@@ -621,6 +621,38 @@ def api_upload_history():
     return jsonify({"history": history})
 
 
+# ── API: workload sparklines (last 6 months actual per workload) ───────────────
+
+@app.route("/AWSFinOps/api/sparklines", methods=["GET"])
+@login_required
+def api_sparklines():
+    with get_conn() as conn:
+        months = [r["month"] for r in conn.execute(
+            "SELECT DISTINCT month FROM cur_data WHERE category='monthly_expense' "
+            "ORDER BY month DESC LIMIT 6"
+        ).fetchall()]
+        if not months:
+            return jsonify({"sparklines": {}})
+        placeholders = ",".join("?" * len(months))
+        rows = conn.execute(f"""
+            SELECT w.name, w.budget_monthly, c.month, SUM(c.amount) AS actual
+            FROM cur_data c
+            JOIN workloads w
+              ON (w.cur_tag IS NOT NULL AND c.workloads_tag = w.cur_tag)
+              OR (w.cur_tag IS NULL     AND c.workloads_tag = w.name)
+            WHERE c.category = 'monthly_expense' AND c.month IN ({placeholders})
+            GROUP BY w.name, c.month
+            ORDER BY w.name, c.month
+        """, months).fetchall()
+    result = {}
+    for r in rows:
+        name = r["name"]
+        if name not in result:
+            result[name] = {"budget_monthly": r["budget_monthly"], "months": []}
+        result[name]["months"].append({"month": r["month"], "actual": float(r["actual"])})
+    return jsonify({"sparklines": result})
+
+
 # ── API: workloads ─────────────────────────────────────────────────────────────
 
 @app.route("/AWSFinOps/api/workloads", methods=["GET"])
