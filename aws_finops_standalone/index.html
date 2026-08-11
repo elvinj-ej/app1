@@ -2018,9 +2018,9 @@ function renderRunBurnRate() {
   const headCol   = isOnTrack ? "#2E7D32" : "#C0392B";
 
   el.innerHTML = `
-  <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 20px">
+  <div style="background:#E8EDF3;border:1px solid #90A4BC;border-radius:8px;padding:14px 20px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-      <span style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)">Burn Rate — Run Workloads</span>
+      <span style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#2B3752">Burn Rate — Run Workloads</span>
       <span style="font-size:.88rem;font-weight:700;color:${headCol};margin-left:8px">${icon} FY${displayFY}: ${status}</span>
       <span style="font-size:.76rem;color:var(--muted);margin-left:auto">Jul ${fyStartYear} – Jun ${displayFY} · Annual forecast ${annualBudget ? fmt(annualBudget) : "—"}</span>
     </div>
