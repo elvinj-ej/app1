@@ -882,14 +882,13 @@ async function loadRunCost(month) {
     : "";
 
   // Fixed column widths shared across ALL tables so columns align visually
-  const COL_W = ["160px","120px","150px","28px","100px","110px","110px",...(hasTelstra?["100px","110px"]:[]),"110px"];
+  const COL_W = ["160px","120px","150px","100px","110px","110px",...(hasTelstra?["100px","110px"]:[]),"110px"];
   const colgroup = `<colgroup>${COL_W.map(w=>`<col style="width:${w}">`).join("")}</colgroup>`;
 
   function allHead(cls) { return `${colgroup}<thead class="${cls}"><tr>
     <th>Workload</th>
     <th>Domain</th>
     <th>Budget Manager</th>
-    <th></th>
     <th class="num">Budget/mo</th>
     <th class="num">${mLabel} Actual</th>
     <th class="num">Shared Alloc</th>
@@ -900,9 +899,6 @@ async function loadRunCost(month) {
   const sharedHead = allHead("hd-shared");
   function rpHead(cls) { return allHead(cls); }
 
-  function infoCell(r) {
-    return r.description ? `<td><span title="${r.description}" style="cursor:help;color:var(--muted)">ℹ</span></td>` : "<td></td>";
-  }
 
   // Telstra-only extra cells (Diff + Total) — Shared rows always get "—"
   const rpTelstra = hasTelstra
@@ -912,7 +908,7 @@ async function loadRunCost(month) {
 
   // ── Shared Cost table ─────────────────────────────────────────────────────
   let sRows = d.shared_rows.map(r => `<tr>
-    <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td>${r.workload}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">—</td>
@@ -920,7 +916,7 @@ async function loadRunCost(month) {
     ${devCell(r.deviation)}
   </tr>`).join("");
   sRows += `<tr class="row-subtotal-shared">
-    <td colspan="4"><strong>Total Shared Cost</strong></td>
+    <td colspan="3"><strong>Total Shared Cost</strong></td>
     <td class="num">—</td>
     <td class="num"><strong>${fmt(d.total_shared_actual)}</strong></td>
     <td class="num">—</td>
@@ -930,14 +926,14 @@ async function loadRunCost(month) {
 
   // ── Run Cost table ────────────────────────────────────────────────────────
   let rRows = d.consumption_rows.map(r => `<tr class="${r.workload==="Other"?"row-other":""}">
-    <td>${r.workload}${r.workload!=="Other" ? momIndicator(r.workload, r.actual) : ""}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td>${r.workload}${r.workload!=="Other" ? momIndicator(r.workload, r.actual) : ""}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>
     ${rpTelstra(r)}${devCell(r.deviation)}
   </tr>`).join("");
   rRows += `<tr class="row-subtotal-run">
-    <td colspan="4"><strong>Total Run Cost</strong></td>
+    <td colspan="3"><strong>Total Run Cost</strong></td>
     <td class="num">${fmt(d.total_consumption_budget)}</td>
     <td class="num">${fmt(d.total_consumption_actual)}</td>
     <td class="num"></td>
@@ -959,13 +955,17 @@ async function loadRunCost(month) {
            ✉ Email</button>`
       : "";
     return `<tr>
-    <td>${r.workload}${emailBtn}</td><td>${r.domain}</td><td>${r.budget_manager}</td>${infoCell(r)}
+    <td>${r.workload}${emailBtn}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
     <td class="num">${r.budget_monthly ? fmt(r.budget_monthly) : "—"}</td>
     ${aC(r)}
     <td class="num">${fmt(r.shared_alloc)}</td>
     ${rpTelstra(r)}${devCell(r.deviation)}
   </tr>`;
   };
+
+  const devFmt = (val) => val != null
+    ? `<span class="${val > 0 ? "dev-pos" : "dev-neg"}">${val > 0 ? "+" : ""}${fmt(val)}</span>`
+    : "—";
 
   // ── MES table ─────────────────────────────────────────────────────────────
   const mesRows_data = nonAdaProj.filter(r => r.workload === "MES");
@@ -976,12 +976,12 @@ async function loadRunCost(month) {
   const mesFinops = mesRows_data.reduce((s,r) => s + r.total, 0);
   let mesRows = mesRows_data.map(makeProjectRow).join("");
   mesRows += `<tr class="row-subtotal-project">
-    <td colspan="4"><strong>Total MES</strong></td>
+    <td colspan="3"><strong>Total MES</strong></td>
     <td class="num">${mesBudget ? fmt(mesBudget) : "—"}</td>
     <td class="num">${fmt(mesActual)}</td>
     <td class="num"></td>
     ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(mesFinops)}</strong></td>` : ""}
-    <td class="num">${d.deviation_mes != null ? (d.deviation_mes > 0 ? "+" : "") + fmt(d.deviation_mes) : "—"}</td>
+    <td class="num">${mesBudget ? devFmt(mesFinops - mesBudget) : "—"}</td>
   </tr>`;
 
   // ── CNA table ─────────────────────────────────────────────────────────────
@@ -990,12 +990,12 @@ async function loadRunCost(month) {
   const cnaFinops = cnaRows_data.reduce((s,r) => s + r.total, 0);
   let cnaRows = cnaRows_data.map(makeProjectRow).join("");
   cnaRows += `<tr class="row-subtotal-project" style="background:#FBE9E7;color:#E65100">
-    <td colspan="4"><strong>Total CNA</strong></td>
+    <td colspan="3"><strong>Total CNA</strong></td>
     <td class="num">${cnaBudget ? fmt(cnaBudget) : "—"}</td>
     <td class="num">${fmt(cnaActual)}</td>
     <td class="num"></td>
     ${hasTelstra ? `<td class="num"></td><td class="num"><strong>${fmt(cnaFinops)}</strong></td>` : ""}
-    <td class="num">${d.deviation_cna != null ? (d.deviation_cna > 0 ? "+" : "") + fmt(d.deviation_cna) : "—"}</td>
+    <td class="num">${cnaBudget ? devFmt(cnaFinops - cnaBudget) : "—"}</td>
   </tr>`;
 
   const ADA_GROUP_BUDGET = 244_000 / 12;  // $20,333/mo — group total, not per-workload
@@ -1004,7 +1004,7 @@ async function loadRunCost(month) {
   const adaFinops = adaProj.reduce((s,r) => s + r.total, 0);
   const adaDev    = adaActual - ADA_GROUP_BUDGET;
   adaRows += `<tr style="background:#E8F5E9;font-weight:600">
-    <td colspan="4">
+    <td colspan="3">
       <strong>Total ADA Projects</strong>
       <span style="font-size:.72rem;font-weight:400;color:#2E7D32;margin-left:6px">Group budget — USD 244,000/yr</span>
       <button onclick='sendProjectEmail(${JSON.stringify(selMonth)},"ADA",this)'
@@ -1020,7 +1020,7 @@ async function loadRunCost(month) {
 
   // ── Grand total table — same colgroup so numeric columns align with tables above ──
   const grandHead = `${colgroup}<thead class="hd-run"><tr>
-    <th colspan="4">Category</th>
+    <th colspan="3">Category</th>
     <th class="num">Total Budget/mo</th>
     <th class="num">${mLabel} Actuals</th>
     <th class="num">Total Shared Alloc</th>
@@ -1028,13 +1028,9 @@ async function loadRunCost(month) {
     <th class="num">Dev vs Budget</th>
   </tr></thead>`;
 
-  const devFmt = (val) => val != null
-    ? `<span class="${val > 0 ? "dev-pos" : "dev-neg"}">${val > 0 ? "+" : ""}${fmt(val)}</span>`
-    : "—";
-
   const grandRows = `
     <tr>
-      <td colspan="4"><strong>Run Cost</strong></td>
+      <td colspan="3"><strong>Run Cost</strong></td>
       <td class="num">${fmt(d.total_consumption_budget)}</td>
       <td class="num">${fmt(d.total_consumption_actual)}</td>
       <td class="num">${fmt(d.total_consumption_shared_alloc)}</td>
@@ -1042,23 +1038,23 @@ async function loadRunCost(month) {
       <td class="num">${devFmt(d.deviation_run_vs_budget)}</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>MES</strong></td>
+      <td colspan="3"><strong>MES</strong></td>
       <td class="num">${fmt(mesBudget)}</td>
       <td class="num">${fmt(mesActual)}</td>
       <td class="num">${fmt(mesRows_data.reduce((s,r)=>s+(r.shared_alloc||0),0))}</td>
       ${hasTelstra ? `<td class="num">${fmt(mesRows_data.reduce((s,r)=>s+(r.telstra_diff||0),0))}</td><td class="num"><strong>${fmt(mesFinops)}</strong></td>` : ""}
-      <td class="num">${d.deviation_mes != null ? devFmt(d.deviation_mes) : "—"}</td>
+      <td class="num">${mesBudget ? devFmt(mesFinops - mesBudget) : "—"}</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>CNA</strong></td>
+      <td colspan="3"><strong>CNA</strong></td>
       <td class="num">${fmt(cnaBudget)}</td>
       <td class="num">${fmt(cnaActual)}</td>
       <td class="num">${fmt(cnaRows_data.reduce((s,r)=>s+(r.shared_alloc||0),0))}</td>
       ${hasTelstra ? `<td class="num">${fmt(cnaRows_data.reduce((s,r)=>s+(r.telstra_diff||0),0))}</td><td class="num"><strong>${fmt(cnaFinops)}</strong></td>` : ""}
-      <td class="num">${d.deviation_cna != null ? devFmt(d.deviation_cna) : "—"}</td>
+      <td class="num">${cnaBudget ? devFmt(cnaFinops - cnaBudget) : "—"}</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>ADA Projects</strong></td>
+      <td colspan="3"><strong>ADA Projects</strong></td>
       <td class="num">${fmt(ADA_GROUP_BUDGET)}</td>
       <td class="num">${fmt(adaActual)}</td>
       <td class="num">—</td>
@@ -1066,7 +1062,7 @@ async function loadRunCost(month) {
       <td class="num">${devFmt(adaDev)}</td>
     </tr>
     <tr class="row-grand">
-      <td colspan="4"><strong>GRAND TOTAL</strong></td>
+      <td colspan="3"><strong>GRAND TOTAL</strong></td>
       <td class="num">—</td>
       <td class="num"><strong>${fmt(d.total_consumption_actual + d.total_project_actual)}</strong></td>
       <td class="num"><strong>${fmt(d.shared_pool)}</strong></td>
@@ -1093,7 +1089,7 @@ async function loadRunCost(month) {
       <table class="detail-tbl"><thead style="background:#E65100;color:#fff"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th></th><th class="num">Budget/mo</th><th class="num">${mLabel} Actual</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${cnaRows}</tbody></table>
 
       <div class="section-label" style="margin-top:20px"><span class="dot" style="background:#2E7D32"></span>ADA Projects <span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:8px">Actual spend only — no shared alloc or Telstra diff applied</span></div>
-      <table class="detail-tbl"><thead class="hd-ada"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th>Info</th><th class="num">Budget/mo</th><th class="num">Actuals</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${adaRows}</tbody></table>
+      <table class="detail-tbl"><thead class="hd-ada"><tr><th>Workload</th><th>Domain</th><th>Budget Manager</th><th class="num">Budget/mo</th><th class="num">Actuals</th><th class="num">Shared Alloc</th>${hasTelstra ? `<th class="num">Telstra Diff</th><th class="num">FinOps Total</th>` : ""}<th class="num">Dev vs Budget</th></tr></thead><tbody>${adaRows}</tbody></table>
 
       <div class="section-label" style="margin-top:20px"><span class="dot" style="background:var(--col-run)"></span>Grand Total Summary</div>
       <table class="detail-tbl">${grandHead}<tbody>${grandRows}</tbody></table>
@@ -2609,8 +2605,8 @@ function renderProjectBurnRate() {
 function toggleInputsBar() {
   const bar = document.getElementById("inputs-bar");
   const btn = document.getElementById("edit-forecasts-btn");
-  const visible = bar.style.display !== "none" && bar.style.display !== "";
-  bar.style.display = visible ? "none" : "";
+  const visible = bar.style.display !== "none";
+  bar.style.display = visible ? "none" : "flex";
   btn.style.background = visible ? "#fff" : "#f0eaf8";
   btn.style.color = visible ? "var(--muted)" : "#6A1B9A";
   btn.style.borderColor = visible ? "var(--border)" : "#CE93D8";
