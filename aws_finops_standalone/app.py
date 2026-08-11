@@ -860,7 +860,7 @@ def api_summary():
                     "forecast_ada":            fc.get("forecast_ada"),
                     "ada_finops":              d["total_ada_finops"],
                     "non_ada_finops":          d["total_non_ada_finops"],
-                    "run_workloads":           [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"]} for r in d["consumption_rows"] if r["workload"] != "Other"],
+                    "run_workloads":           [{"name": r["workload"], "actual": r["actual"], "marketplace": r["actual_marketplace"], "budget_monthly": r.get("budget_monthly") or 0} for r in d["consumption_rows"]],
                     "project_workloads":       [{"name": r["workload"], "actual": r["actual"], "shared_alloc": r["shared_alloc"], "telstra_diff": r["telstra_diff"], "budget_monthly": r["budget_monthly"], "domain": r["domain"]} for r in d["project_rows"]],
                 })
             except Exception as e:

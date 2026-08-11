@@ -226,9 +226,10 @@ input[type=file]{display:none}
     <select id="fy-select" style="font-size:.82rem;font-weight:600;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--navy);cursor:pointer;outline:none"></select>
     <span style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap">Month:</span>
     <div class="month-pills" id="month-pills"></div>
+    <button id="edit-forecasts-btn" onclick="toggleInputsBar()" style="margin-left:auto;font-size:.76rem;font-weight:600;padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:5px">⚙ Edit Forecasts</button>
   </div>
 
-  <!-- Inputs: Telstra Invoice + Forecasts -->
+  <!-- Inputs: Telstra Invoice + Forecasts (hidden by default) -->
   <div class="inputs-bar" id="inputs-bar" style="display:none">
     <div class="inp-group">
       <label>Telstra Invoice (USD)</label>
@@ -250,10 +251,15 @@ input[type=file]{display:none}
     <span id="save-ok" style="display:none;font-size:.78rem;color:var(--green)">✓ Saved</span>
   </div>
 
+  <!-- One-line narrative -->
+  <div id="kpi-narrative" style="display:none;font-size:.82rem;color:var(--navy);margin-bottom:8px;padding:8px 14px;background:#fff;border:1px solid var(--border);border-radius:6px"></div>
   <!-- KPI cards row 1 -->
   <div class="kpi-row" id="kpi-row" style="display:none;flex-wrap:nowrap">
     <div class="kpi" style="border-top:3px solid var(--col-run);min-width:0;flex:1">
-      <div class="kpi-label">Run Cost</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <div class="kpi-label">Run Cost</div>
+        <span id="kpi-run-pill" style="display:none;font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap"></span>
+      </div>
       <div class="kpi-val" id="kpi-run">—</div>
       <div class="kpi-sub">Actual + shared cost allocation</div>
       <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
@@ -263,7 +269,10 @@ input[type=file]{display:none}
       </div>
     </div>
     <div class="kpi" style="border-top:3px solid var(--col-project);min-width:0;flex:1">
-      <div class="kpi-label">Project X-charge (MES + CNA)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <div class="kpi-label">Project X-charge (MES + CNA)</div>
+        <span id="kpi-proj-pill" style="display:none;font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap"></span>
+      </div>
       <div class="kpi-val" id="kpi-proj">—</div>
       <div class="kpi-sub">Actual + shared alloc + Telstra diff</div>
       <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
@@ -273,7 +282,10 @@ input[type=file]{display:none}
       </div>
     </div>
     <div class="kpi" style="border-top:3px solid var(--green);min-width:0;flex:1">
-      <div class="kpi-label">ADA Projects</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <div class="kpi-label">ADA Projects</div>
+        <span id="kpi-ada-pill" style="display:none;font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap"></span>
+      </div>
       <div class="kpi-val" id="kpi-ada">—</div>
       <div class="kpi-sub">Clark AI, DataInsights, Sonar, Model Gateway — actual spend only</div>
       <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
@@ -319,6 +331,8 @@ input[type=file]{display:none}
   <div id="sum-last-upload-bar" style="display:none;font-size:.82rem;color:var(--navy);margin-bottom:10px;font-weight:500">
     Based on the last CUR update: <strong id="sum-last-upload-ts" style="color:var(--navy)">—</strong>
   </div>
+  <!-- FY Health Hero -->
+  <div id="fy-health-hero" style="display:none;margin-bottom:16px"></div>
   <!-- Filter bar -->
   <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 16px;
               display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px">
@@ -375,6 +389,7 @@ input[type=file]{display:none}
   </div>
   <!-- Burn rate banners -->
   <div id="run-burn-rate"     style="display:none;margin-bottom:10px"></div>
+  <div id="other-burn-rate"   style="display:none;margin-bottom:10px"></div>
   <div id="project-burn-rate" style="display:none;margin-bottom:16px"></div>
   <!-- Charts stacked vertically -->
   <div style="display:flex;flex-direction:column;gap:16px">
@@ -663,8 +678,9 @@ async function loadMonths() {
   }
 
   document.getElementById("no-data-msg").style.display = "none";
-  ["month-controls","inputs-bar","kpi-row"].forEach(id =>
-    document.getElementById(id).style.display = "");
+  document.getElementById("month-controls").style.display = "";
+  document.getElementById("kpi-row").style.display = "";
+  // inputs-bar stays hidden until user clicks the edit button
 
   if (d.last_upload_utc) {
     document.getElementById("last-upload-ts").textContent = fmtAEST(d.last_upload_utc);
@@ -774,6 +790,13 @@ async function loadRunCost(month) {
     adaDevEl.textContent = sign + fmt(d.deviation_ada) + " vs ADA forecast (" + fmt(d.forecast_ada) + "/mo)";
     adaDevEl.style.color = d.deviation_ada > 0 ? "var(--red)" : "var(--green)";
   } else { adaDevEl.textContent = "Forecast: " + (d.forecast_ada ? fmt(d.forecast_ada) + "/mo" : "not set"); adaDevEl.style.color = ""; }
+
+  // Status pills
+  setKPIPill("kpi-run-pill",  d.deviation_run,     d.forecast_run);
+  setKPIPill("kpi-proj-pill", d.deviation_project, d.forecast_project);
+  setKPIPill("kpi-ada-pill",  d.deviation_ada,     d.forecast_ada);
+  updateKPINarrative(d, mLabel);
+
   document.getElementById("kpi-shared").textContent       = fmt(d.shared_pool);
   document.getElementById("kpi-mktadj").textContent       = fmt(d.total_marketplace_pos_adj || 0);
   document.getElementById("kpi-grand").textContent        = fmt(d.grand_total);
@@ -2227,6 +2250,196 @@ function renderProjectBurnRate() {
   el.style.display = "block";
 }
 
+// ── Toggle inputs bar ────────────────────────────────────────────────────────
+function toggleInputsBar() {
+  const bar = document.getElementById("inputs-bar");
+  const btn = document.getElementById("edit-forecasts-btn");
+  const visible = bar.style.display !== "none" && bar.style.display !== "";
+  bar.style.display = visible ? "none" : "";
+  btn.style.background = visible ? "#fff" : "#f0eaf8";
+  btn.style.color = visible ? "var(--muted)" : "#6A1B9A";
+  btn.style.borderColor = visible ? "var(--border)" : "#CE93D8";
+}
+
+// ── KPI status pill helper ────────────────────────────────────────────────────
+function setKPIPill(id, deviation, forecast) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (deviation == null || forecast == null) { el.style.display = "none"; return; }
+  const pct = deviation / Math.abs(forecast) * 100;
+  let label, bg, color;
+  if (deviation < 0) {
+    label = `▼ ${Math.abs(pct).toFixed(0)}% under`;
+    bg = "#E8F5E9"; color = "#2E7D32";
+  } else if (pct <= 5) {
+    label = `▲ ${pct.toFixed(0)}% over`;
+    bg = "#FFF8E1"; color = "#F57F17";
+  } else {
+    label = `▲ ${pct.toFixed(0)}% over`;
+    bg = "#FFEBEE"; color = "#C62828";
+  }
+  el.textContent = label;
+  el.style.background = bg;
+  el.style.color = color;
+  el.style.display = "";
+}
+
+// ── KPI narrative line ────────────────────────────────────────────────────────
+function updateKPINarrative(d, monthLabel) {
+  const el = document.getElementById("kpi-narrative");
+  if (!el) return;
+  const parts = [];
+  if (d.deviation_run != null) {
+    const over = d.deviation_run > 0;
+    parts.push(`Run Cost is <strong style="color:${over ? "#C62828" : "#2E7D32"}">${fmt(Math.abs(d.deviation_run))} ${over ? "over" : "under"} forecast</strong>`);
+  }
+  if (d.deviation_project != null) {
+    const over = d.deviation_project > 0;
+    parts.push(`Project X-charge (MES+CNA) is <strong style="color:${over ? "#C62828" : "#2E7D32"}">${fmt(Math.abs(d.deviation_project))} ${over ? "over" : "under"} forecast</strong>`);
+  }
+  if (d.deviation_ada != null) {
+    const over = d.deviation_ada > 0;
+    parts.push(`ADA Projects is <strong style="color:${over ? "#C62828" : "#2E7D32"}">${fmt(Math.abs(d.deviation_ada))} ${over ? "over" : "under"} ADA forecast</strong>`);
+  }
+  if (!parts.length) { el.style.display = "none"; return; }
+  el.innerHTML = `<span style="font-weight:600;color:var(--muted)">${monthLabel}:</span> ` + parts.join(" · ");
+  el.style.display = "";
+}
+
+// ── FY Health Hero ────────────────────────────────────────────────────────────
+function renderFYHero() {
+  const el = document.getElementById("fy-health-hero");
+  if (!el) return;
+  const { displayFY, fyStartYear, fyData, actualMonths, remainingMos, fyComplete } = getFYContext();
+  if (!actualMonths.length) { el.style.display = "none"; return; }
+
+  function heroTile(label, sublabel, spent, annualBudget, remainingMos, fyComplete, accentColor) {
+    if (!spent && !annualBudget) return "";
+    const last3    = actualMonths.slice(-3);
+    const avgRun   = last3.length ? last3.reduce((s,m) => s + (m.run_finops||0), 0) / last3.length : 0;
+    const pct      = annualBudget > 0 ? (spent / annualBudget * 100) : null;
+    const remaining = annualBudget > 0 ? annualBudget - spent : null;
+    const projected = spent + (spent / Math.max(actualMonths.length, 1)) * remainingMos;
+    const pvb       = annualBudget > 0 ? projected - annualBudget : null;
+    const onTrack   = pvb == null || pvb <= 0;
+    const ragBg     = onTrack ? "#E8F5E9" : (pct != null && pct > 85 ? "#FFF8E1" : "#FFEBEE");
+    const ragCol    = onTrack ? "#2E7D32" : (pct != null && pct > 85 ? "#F57F17" : "#C62828");
+    const ragIcon   = onTrack ? "✓" : "⚠";
+    const ragText   = fyComplete ? (onTrack ? "Finished on track" : "Finished over forecast")
+                                 : (onTrack ? "On track" : "Watch");
+    const pctText   = pct != null ? pct.toFixed(1) + "%" : "—";
+    const barColor  = pct == null ? "#ccc" : pct > 100 ? "#C62828" : pct > 85 ? "#F57F17" : "#2E7D32";
+    return `
+    <div style="flex:1;min-width:220px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">
+        <div>
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">${label}</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:1px">${sublabel}</div>
+        </div>
+        <span style="font-size:.7rem;font-weight:700;padding:3px 9px;border-radius:10px;background:${ragBg};color:${ragCol};white-space:nowrap">${ragIcon} ${ragText}</span>
+      </div>
+      <div style="font-size:1.6rem;font-weight:700;color:${accentColor};margin-bottom:2px">${fmt(projected)}</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">Projected FY${displayFY} total${pvb != null ? ` · <span style="color:${ragCol};font-weight:600">${pvb > 0 ? "+" : ""}${fmt(pvb)} vs forecast</span>` : ""}</div>
+      <div style="background:#eee;border-radius:3px;height:5px;overflow:hidden;margin-bottom:4px">
+        <div style="background:${barColor};width:${Math.min(pct||0,100)}%;height:100%;border-radius:3px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted)">
+        <span>${pctText} of ${annualBudget ? fmt(annualBudget) : "—"} annual forecast used</span>
+        <span>${fmt(spent)} spent YTD</span>
+      </div>
+    </div>`;
+  }
+
+  const runBudget  = fyData.reduce((s,m) => s + (m.forecast_run     || 0), 0);
+  const projBudget = fyData.reduce((s,m) => s + (m.forecast_project || 0), 0);
+  const adaBudget  = 244000;
+  const runSpent   = actualMonths.reduce((s,m) => s + (m.run_finops      || 0), 0);
+  const projSpent  = actualMonths.reduce((s,m) => s + (m.non_ada_finops  || 0), 0);
+  const adaSpent   = actualMonths.reduce((s,m) => s + (m.ada_finops      || 0), 0);
+
+  el.innerHTML = `
+  <div style="margin-bottom:6px;display:flex;align-items:center;gap:10px">
+    <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">FY${displayFY} Outlook</span>
+    <span style="font-size:.7rem;color:var(--muted)">Jul ${fyStartYear} – Jun ${displayFY} · ${actualMonths.length} of 12 months complete · ${remainingMos} remaining</span>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    ${heroTile("Run Cost", "Consumption workloads incl. shared alloc & Telstra diff", runSpent,  runBudget,  remainingMos, fyComplete, "#2B3752")}
+    ${heroTile("Project X-charge (MES + CNA)", "Shared alloc & Telstra diff applied",             projSpent, projBudget, remainingMos, fyComplete, "#6A1B9A")}
+    ${heroTile("ADA Projects", "Actual spend only · USD 244k budget transferred to ISD",          adaSpent,  adaBudget,  remainingMos, fyComplete, "#2E7D32")}
+  </div>`;
+  el.style.display = "";
+}
+
+// ── Other workload burn rate row ──────────────────────────────────────────────
+function renderOtherBurnRate() {
+  const el = document.getElementById("other-burn-rate");
+  if (!el) return;
+  const { displayFY, fyStartYear, fyData, actualMonths, remainingMos, fyComplete } = getFYContext();
+
+  // Sum "Other" actuals across FY months
+  const otherActuals = fyData.map(m => {
+    const wls = m.run_workloads || [];
+    const ow  = wls.find(w => w.name === "Other");
+    return ow ? ow.actual : null;
+  }).filter(v => v != null);
+
+  if (!otherActuals.length) { el.style.display = "none"; return; }
+
+  const annualBudget  = 15087 * 12;
+  const ytd           = otherActuals.reduce((s, v) => s + v, 0);
+  const pct           = ytd / annualBudget * 100;
+  const remaining     = annualBudget - ytd;
+  const last3         = otherActuals.slice(-3);
+  const avgMo         = last3.reduce((s,v) => s+v, 0) / last3.length;
+  const projected     = ytd + avgMo * remainingMos;
+  const pvb           = projected - annualBudget;
+  const isOnTrack     = pvb <= 0;
+  const barColor      = pct > 100 ? "#C0392B" : pct > 85 ? "#F0A500" : "#2E7D32";
+  const statusCol     = isOnTrack ? "#2E7D32" : "#C0392B";
+
+  el.innerHTML = `
+  <div style="border:1px solid #CE93D8;border-radius:6px;padding:12px 16px;margin-bottom:8px;background:#F3E5F5">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+      <strong style="font-size:.9rem;color:var(--navy)">Other (Grouped workloads)</strong>
+      <span style="font-size:.78rem;font-weight:700;color:${statusCol}">${isOnTrack ? "✓ On track" : "⚠ Watch"}</span>
+      <span style="font-size:.75rem;color:var(--muted);margin-left:auto">Annual forecast ${fmt(annualBudget)}</span>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+      <div style="flex:1;min-width:160px">
+        <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-bottom:3px">
+          <span>Used</span><span style="color:${barColor};font-weight:700">${pct.toFixed(1)}%</span>
+        </div>
+        <div style="background:#eee;border-radius:3px;height:6px;overflow:hidden">
+          <div style="background:${barColor};width:${Math.min(pct,100)}%;height:100%;border-radius:3px"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:var(--navy)">${fmt(ytd)}</div>
+          <div style="font-size:.68rem;color:var(--muted)">Spent YTD</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:${remaining < 0 ? "#C0392B" : "var(--navy)"}">${fmt(Math.abs(remaining))}</div>
+          <div style="font-size:.68rem;color:var(--muted)">${remaining < 0 ? "Over" : "Remaining"}</div>
+        </div>
+        ${!fyComplete && remainingMos > 0 ? `
+        <div style="text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:${pvb > 0 ? "#C0392B" : "#2E7D32"}">${fmt(projected)}</div>
+          <div style="font-size:.68rem;color:var(--muted)">Projected</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.9rem;font-weight:700;color:${pvb > 0 ? "#C0392B" : "#2E7D32"}">${pvb > 0 ? "+" : ""}${fmt(pvb)}</div>
+          <div style="font-size:.68rem;color:var(--muted)">vs forecast</div>
+        </div>` : ""}
+      </div>
+    </div>
+    <div style="font-size:.7rem;color:var(--muted);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px dashed #e0e0e0">
+      Budget ${fmt(15087)}/mo × 12 = ${fmt(annualBudget)} annual. Includes grouped/untagged Run Cost workloads (Acoustics, BBTB, CCI, DNR, etc.).
+    </div>
+  </div>`;
+  el.style.display = "block";
+}
+
 function updateSummaryKPIs(months) {
   const actual      = months.filter(m => m.run_actual != null || m.run_finops != null);
   const totalRun    = actual.reduce((s, m) => s + (m.run_finops           || 0), 0);
@@ -2242,7 +2455,9 @@ function updateSummaryKPIs(months) {
   document.getElementById("sum-kpi-telstra").textContent = count ? fmt(totalTelstra) : "—";
   document.getElementById("sum-kpi-months").textContent  = count || months.length;
   document.getElementById("sum-kpi-avg").textContent     = count ? fmt(totalRun / count) : "—";
+  renderFYHero();
   renderRunBurnRate();
+  renderOtherBurnRate();
   renderProjectBurnRate();
 }
 

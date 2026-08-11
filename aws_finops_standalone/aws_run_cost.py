@@ -258,7 +258,7 @@ def compute(month: str) -> dict:
         "cost_category":          "Consumption",
         "budget_manager":         "",
         "description":            "Grouped workloads + untagged CUR spend",
-        "budget_monthly":         None,
+        "budget_monthly":         15087.0,
         "actual_expense":         combined_other_actual,
         "actual_marketplace":     0.0,
         "marketplace_adjustment": 0.0,
