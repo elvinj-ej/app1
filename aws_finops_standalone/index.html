@@ -1117,23 +1117,47 @@ async function loadRunCost(month) {
     domainMap[dom] += r.actual || 0;
   });
   const domainTotal = Object.values(domainMap).reduce((s,v) => s+v, 0);
-  const domainRows = Object.entries(domainMap)
-    .sort((a,b) => b[1]-a[1])
-    .map(([dom, amt]) => {
-      const pct = domainTotal > 0 ? (amt/domainTotal*100) : 0;
-      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-        <span style="font-size:.78rem;min-width:70px;color:var(--navy);font-weight:600">${dom}</span>
-        <div style="flex:1;background:var(--border);border-radius:3px;height:7px;overflow:hidden">
-          <div style="width:${pct.toFixed(1)}%;height:100%;background:#2B3752;border-radius:3px"></div>
-        </div>
-        <span style="font-size:.76rem;color:var(--muted);min-width:65px;text-align:right">${fmt(amt)}</span>
-        <span style="font-size:.72rem;color:var(--muted);min-width:32px;text-align:right">${pct.toFixed(0)}%</span>
-      </div>`;
-    }).join("");
-  const domainCard = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:16px;display:inline-block;min-width:320px;vertical-align:top">
+  const DONUT_COLORS = ["#2B3752","#4A6FA5","#E65100","#2E7D32","#7B1FA2","#C62828","#00838F","#EF6C00","#4527A0","#558B2F"];
+  const domainEntries = Object.entries(domainMap).sort((a,b) => b[1]-a[1]);
+  // SVG donut
+  const R = 54, r = 32, cx = 64, cy = 64;
+  let cumAngle = -Math.PI / 2;
+  const slices = domainEntries.map(([dom, amt], i) => {
+    const frac = domainTotal > 0 ? amt / domainTotal : 0;
+    const angle = frac * 2 * Math.PI;
+    const x1 = cx + R * Math.cos(cumAngle), y1 = cy + R * Math.sin(cumAngle);
+    cumAngle += angle;
+    const x2 = cx + R * Math.cos(cumAngle), y2 = cy + R * Math.sin(cumAngle);
+    const xi1 = cx + r * Math.cos(cumAngle - angle), yi1 = cy + r * Math.sin(cumAngle - angle);
+    const xi2 = cx + r * Math.cos(cumAngle), yi2 = cy + r * Math.sin(cumAngle);
+    const lg = angle > Math.PI ? 1 : 0;
+    const col = DONUT_COLORS[i % DONUT_COLORS.length];
+    const pct = (frac * 100).toFixed(1);
+    const path = frac < 0.001 ? "" :
+      `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg},1 ${x2.toFixed(2)},${y2.toFixed(2)} L${xi2.toFixed(2)},${yi2.toFixed(2)} A${r},${r} 0 ${lg},0 ${xi1.toFixed(2)},${yi1.toFixed(2)} Z" fill="${col}">
+        <title>${dom}: ${fmt(amt)} (${pct}%)</title></path>`;
+    return { dom, amt, pct, col, path };
+  });
+  const donutSvg = `<svg viewBox="0 0 128 128" width="128" height="128" style="flex-shrink:0">
+    ${slices.map(s => s.path).join("")}
+    <circle cx="${cx}" cy="${cy}" r="${r-1}" fill="var(--surface)"/>
+    <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">Total</text>
+    <text x="${cx}" y="${cy + 8}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--navy)">${fmt(domainTotal)}</text>
+  </svg>`;
+  const donutLegend = slices.map(s =>
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.col};flex-shrink:0"></span>
+      <span style="font-size:.76rem;color:var(--navy);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${s.dom}">${s.dom}</span>
+      <span style="font-size:.74rem;color:var(--muted);white-space:nowrap">${fmt(s.amt)}</span>
+      <span style="font-size:.72rem;color:var(--muted);min-width:32px;text-align:right">${s.pct}%</span>
+    </div>`
+  ).join("");
+  const domainCard = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:16px;display:inline-block;vertical-align:top">
     <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--navy);margin-bottom:10px">Spend by Domain / Outcome Group</div>
-    ${domainRows}
-    <div style="font-size:.72rem;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:6px">Total actuals: <strong>${fmt(domainTotal)}</strong></div>
+    <div style="display:flex;gap:16px;align-items:center">
+      ${donutSvg}
+      <div style="min-width:180px;max-width:240px">${donutLegend}</div>
+    </div>
   </div>`;
 
   document.getElementById("runcost-wrap").innerHTML = `

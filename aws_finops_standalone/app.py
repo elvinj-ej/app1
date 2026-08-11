@@ -628,8 +628,9 @@ def api_upload_history():
 def api_sparklines():
     with get_conn() as conn:
         months = [r["month"] for r in conn.execute(
-            "SELECT DISTINCT month FROM cur_data WHERE category='monthly_expense' "
-            "ORDER BY month DESC LIMIT 6"
+            "SELECT month FROM (SELECT DISTINCT month FROM cur_data "
+            "WHERE category='monthly_expense' ORDER BY month DESC LIMIT 6) "
+            "ORDER BY month ASC"
         ).fetchall()]
         if not months:
             return jsonify({"sparklines": {}})
