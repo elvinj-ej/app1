@@ -2204,14 +2204,20 @@ function showConsolidatedTip(e, bar, months) {
   const idx   = months.findIndex(m => m.month === month);
   const mData = months[idx];
   if (!mData) return;
-  const prev  = idx > 0 ? months[idx - 1] : null;
+  // Fall back to full summaryData to find previous month (handles first month of FY)
+  const prev = idx > 0
+    ? months[idx - 1]
+    : (() => {
+        const sortedAll = [...summaryData].sort((a,b) => a.month < b.month ? -1 : 1);
+        const gi = sortedAll.findIndex(m => m.month === month);
+        return gi > 0 ? sortedAll[gi - 1] : null;
+      })();
 
   const dt  = new Date(month);
   const lbl = dt.toLocaleDateString("en-AU", {month:"long", year:"numeric"});
   const total = (mData.run_finops||0)+(mData.mes_finops||0)+(mData.cna_finops||0)+(mData.ada_finops||0);
 
-  // Top workload movers vs prior month (>$5k increase)
-  // Use summary months data directly so current month is always available
+  // Top workload movers vs prior month
   let moversHtml = "";
   if (prev) {
     const buildWlMap = (m) => {
@@ -2222,6 +2228,7 @@ function showConsolidatedTip(e, bar, months) {
     };
     const curMap  = buildWlMap(mData);
     const prevMap = buildWlMap(prev);
+    const prevLbl = new Date(prev.month).toLocaleDateString("en-AU", {month:"short", year:"numeric"});
     const movers = Object.entries(curMap)
       .map(([name, cur]) => ({ name, delta: cur - (prevMap[name] || 0) }))
       .filter(w => w.delta > 5000)
@@ -2229,9 +2236,11 @@ function showConsolidatedTip(e, bar, months) {
       .slice(0, 3);
     if (movers.length) {
       moversHtml = `<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;font-size:.73rem;color:#ffd97d">
-        <strong>⬆ Top increases vs last month:</strong>
-        ${movers.map(w => `<div style="margin-top:3px">${w.name}: <strong>+${fmt(w.delta)}</strong></div>`).join("")}
+        <strong>⬆ Biggest increases vs ${prevLbl}:</strong>
+        ${movers.map((w,i) => `<div style="margin-top:3px">${i+1}. ${w.name}: <strong>+${fmt(w.delta)}</strong></div>`).join("")}
       </div>`;
+    } else {
+      moversHtml = `<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;font-size:.71rem;color:#aaa">No workload increased by more than ${fmt(5000)} vs ${prevLbl}.</div>`;
     }
   }
 
