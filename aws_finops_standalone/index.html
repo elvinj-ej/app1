@@ -1131,8 +1131,9 @@ async function loadRunCost(month) {
   [...d.consumption_rows, ...d.project_rows].forEach(r => {
     const dom = r.domain || "Other";
     if (!domainMap[dom]) domainMap[dom] = 0;
-    // actual + shared_alloc + telstra_diff = full FinOps total per workload
-    domainMap[dom] += (r.actual || 0) + (r.shared_alloc || 0) + (r.telstra_diff || 0);
+    // ADA: actual only; non-ADA: actual + shared_alloc + telstra_diff
+    const isAda = (r.domain || "").toUpperCase() === "ADA" || ["Clark AI","DataInsights","Sonar","Model Gateway"].includes(r.workload);
+    domainMap[dom] += (r.actual || 0) + (isAda ? 0 : (r.shared_alloc || 0) + (r.telstra_diff || 0));
   });
   const domainTotal = Object.values(domainMap).reduce((s,v) => s+v, 0);
   const DONUT_COLORS = ["#2B3752","#4A6FA5","#E65100","#2E7D32","#7B1FA2","#C62828","#00838F","#EF6C00","#4527A0","#558B2F"];
