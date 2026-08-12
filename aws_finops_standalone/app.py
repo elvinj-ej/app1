@@ -632,25 +632,26 @@ def api_sparklines():
             "WHERE category='monthly_expense' ORDER BY month DESC LIMIT 6) "
             "ORDER BY month ASC"
         ).fetchall()]
-        if not months:
-            return jsonify({"sparklines": {}})
-        placeholders = ",".join("?" * len(months))
-        rows = conn.execute(f"""
-            SELECT w.name, w.budget_monthly, c.month, SUM(c.amount) AS actual
-            FROM cur_data c
-            JOIN workloads w
-              ON (w.cur_tag IS NOT NULL AND c.workloads_tag = w.cur_tag)
-              OR (w.cur_tag IS NULL     AND c.workloads_tag = w.name)
-            WHERE c.category = 'monthly_expense' AND c.month IN ({placeholders})
-            GROUP BY w.name, c.month
-            ORDER BY w.name, c.month
-        """, months).fetchall()
+    if not months:
+        return jsonify({"sparklines": {}})
+
     result = {}
-    for r in rows:
-        name = r["name"]
-        if name not in result:
-            result[name] = {"budget_monthly": r["budget_monthly"], "months": []}
-        result[name]["months"].append({"month": r["month"], "actual": float(r["actual"])})
+    for month in months:
+        try:
+            d = compute(month)
+        except Exception:
+            continue
+        all_rows = d["consumption_rows"] + d["project_rows"]
+        for r in all_rows:
+            name = r["workload"]
+            is_ada = (r.get("domain") or "").upper() == "ADA" or name in {"Clark AI", "DataInsights", "Sonar", "Model Gateway"}
+            # ADA: actual only (no shared alloc / telstra diff applied)
+            # non-ADA: full FinOps total = actual + shared_alloc + telstra_diff (marketplace already in actual)
+            finops_val = r["actual"] if is_ada else r["total"]
+            if name not in result:
+                result[name] = {"budget_monthly": r.get("budget_monthly") or 0, "months": []}
+            result[name]["months"].append({"month": month, "actual": finops_val})
+
     return jsonify({"sparklines": result})
 
 
