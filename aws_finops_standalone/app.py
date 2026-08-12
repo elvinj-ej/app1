@@ -626,11 +626,13 @@ def api_upload_history():
 @app.route("/AWSFinOps/api/sparklines", methods=["GET"])
 @login_required
 def api_sparklines():
+    current_month = datetime.date.today().strftime("%Y-%m-01")
     with get_conn() as conn:
         months = [r["month"] for r in conn.execute(
             "SELECT month FROM (SELECT DISTINCT month FROM cur_data "
-            "WHERE category='monthly_expense' ORDER BY month DESC LIMIT 6) "
-            "ORDER BY month ASC"
+            "WHERE category='monthly_expense' AND month < ? ORDER BY month DESC LIMIT 6) "
+            "ORDER BY month ASC",
+            (current_month,),
         ).fetchall()]
     if not months:
         return jsonify({"sparklines": {}})
