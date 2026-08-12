@@ -176,8 +176,8 @@ input[type=file]{display:none}
 .chart-card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:18px 16px 12px}
 .chart-card-hdr{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
 .chart-card-title{font-size:1.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
-.chart-status{display:inline-flex;align-items:center;gap:5px;font-size:1.44rem;font-weight:700;
-              padding:6px 16px;border-radius:10px;white-space:nowrap}
+.chart-status{display:inline-flex;align-items:center;gap:5px;font-size:.95rem;font-weight:700;
+              padding:5px 12px;border-radius:10px;white-space:nowrap}
 .chart-status-ok  {background:#e8f5e9;color:#1A7A4A}
 .chart-status-over{background:#fdecea;color:#C0392B}
 .chart-status-badges{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -2156,18 +2156,36 @@ function renderConsolidatedChart(elId, statusId, months) {
     const latest = [...months].reverse().find(m => m.run_finops != null);
     if (latest) {
       const lbl = new Date(latest.month).toLocaleDateString("en-AU", {month:"short", year:"numeric"});
-      const makeBadge = (label, finops, forecast) => {
-        if (finops == null || forecast == null) return "";
-        const diff = finops - forecast;
-        return diff > 500
-          ? `<span class="chart-status chart-status-over">⚠ ${label} ${fmt(diff)} over (${lbl})</span>`
-          : `<span class="chart-status chart-status-ok">✓ ${label} on track (${lbl})</span>`;
+        // Use same calendar-pace logic as burn rate boxes
+      const fyStartYear = sumSelFY - 1;
+      const fyStartDate = new Date(`${fyStartYear}-07-01`);
+      const fyEndDate   = new Date(`${sumSelFY}-07-01`);
+      const elapsedFrac = Math.min(1, Math.max(0, (new Date() - fyStartDate) / (fyEndDate - fyStartDate)));
+
+      // Cumulative FY spend per category (sum all months in this FY)
+      const fyMonths = months.filter(m => getFY(m.month) === sumSelFY);
+      const cumRun = fyMonths.reduce((s,m) => s + (m.run_finops || 0), 0);
+      const cumMes = fyMonths.reduce((s,m) => s + (m.mes_finops || 0), 0);
+      const cumCna = fyMonths.reduce((s,m) => s + (m.cna_finops || 0), 0);
+      const cumAda = fyMonths.reduce((s,m) => s + (m.ada_finops || 0), 0);
+
+      const makeBadge = (label, cumSpent, monthlyFc) => {
+        if (monthlyFc == null) return "";
+        const annualFc = monthlyFc * 12;
+        const pct = annualFc > 0 ? cumSpent / annualFc : 0;
+        const overPace = elapsedFrac > 0 && pct > elapsedFrac;
+        const projected = annualFc > 0 && elapsedFrac > 0 ? (cumSpent / elapsedFrac) : null;
+        const pvb = projected != null ? projected - annualFc : null;
+        const isOnTrack = !overPace && (pvb == null || pvb <= 0);
+        return isOnTrack
+          ? `<span class="chart-status chart-status-ok">✓ ${label} on track (${lbl})</span>`
+          : `<span class="chart-status chart-status-over">⚠ ${label} Watch needed (${lbl})</span>`;
       };
       badgesEl.innerHTML = [
-        makeBadge("Run",  latest.run_finops,  latest.forecast_run),
-        makeBadge("MES",  latest.mes_finops,  latest.forecast_mes),
-        makeBadge("CNA",  latest.cna_finops,  latest.forecast_cna),
-        makeBadge("ADA",  latest.ada_finops,  latest.forecast_ada),
+        makeBadge("Run", cumRun, latest.forecast_run),
+        makeBadge("MES", cumMes, latest.forecast_mes),
+        makeBadge("CNA", cumCna, latest.forecast_cna),
+        makeBadge("ADA", cumAda, latest.forecast_ada),
       ].join("");
     } else { badgesEl.innerHTML = ""; }
   }
@@ -2193,15 +2211,19 @@ function showConsolidatedTip(e, bar, months) {
   const total = (mData.run_finops||0)+(mData.mes_finops||0)+(mData.cna_finops||0)+(mData.ada_finops||0);
 
   // Top workload movers vs prior month (>$5k increase)
+  // Use summary months data directly so current month is always available
   let moversHtml = "";
   if (prev) {
-    const prevMonth = prev.month;
-    const movers = Object.entries(workloadSparklines)
-      .map(([name, wl]) => {
-        const cur  = (wl.months.find(m => m.month === month)  || {}).actual || 0;
-        const prv  = (wl.months.find(m => m.month === prevMonth) || {}).actual || 0;
-        return { name, delta: cur - prv };
-      })
+    const buildWlMap = (m) => {
+      const map = {};
+      (m.run_workloads     || []).forEach(w => { map[w.name] = (w.actual || 0); });
+      (m.project_workloads || []).forEach(w => { map[w.name] = (w.actual || 0) + (w.shared_alloc || 0); });
+      return map;
+    };
+    const curMap  = buildWlMap(mData);
+    const prevMap = buildWlMap(prev);
+    const movers = Object.entries(curMap)
+      .map(([name, cur]) => ({ name, delta: cur - (prevMap[name] || 0) }))
       .filter(w => w.delta > 5000)
       .sort((a, b) => b.delta - a.delta)
       .slice(0, 3);
