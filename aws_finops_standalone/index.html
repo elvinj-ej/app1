@@ -1134,6 +1134,10 @@ async function loadRunCost(month) {
     domainMap[dom] += (r.actual || 0) + (r.shared_alloc || 0);
   });
   const domainTotal = d.grand_total || Object.values(domainMap).reduce((s,v) => s+v, 0);
+  // Any remainder (e.g. marketplace via PO not attributed to a domain) gets its own slice
+  const domainSegSum = Object.values(domainMap).reduce((s,v) => s+v, 0);
+  const mktRemainder = domainTotal - domainSegSum;
+  if (mktRemainder > 1) domainMap["Marketplace (via PO)"] = mktRemainder;
   const DONUT_COLORS = ["#2B3752","#4A6FA5","#E65100","#2E7D32","#7B1FA2","#C62828","#00838F","#EF6C00","#4527A0","#558B2F"];
   const domainEntries = Object.entries(domainMap).sort((a,b) => b[1]-a[1]);
   // SVG donut — larger, centered
