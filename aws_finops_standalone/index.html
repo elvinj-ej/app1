@@ -782,7 +782,7 @@ document.getElementById("save-inputs-btn").addEventListener("click", async () =>
 
 // ── Run Cost table ────────────────────────────────────────────────────────────
 // ── Sparkline SVG helper ──────────────────────────────────────────────────────
-function sparklineSvg(monthlyData, budgetMonthly) {
+function sparklineSvg(monthlyData, budgetMonthly, groupBudget = false) {
   if (!monthlyData || monthlyData.length < 2) return "";
   const vals = monthlyData.map(m => m.actual);
   const last3 = vals.slice(-3);
@@ -794,14 +794,15 @@ function sparklineSvg(monthlyData, budgetMonthly) {
   const toY = (v) => H - padY - (v / maxV) * (H - padY * 2);
   const xs = vals.map((_, i) => toX(i));
   const ys = vals.map(v => toY(v));
-  const budgetY = budgetMonthly > 0 ? toY(budgetMonthly).toFixed(1) : null;
+  // groupBudget = ADA — colour by group total but don't show a per-workload budget line
+  const budgetY = (budgetMonthly > 0 && !groupBudget) ? toY(budgetMonthly).toFixed(1) : null;
   const budgetLine = budgetY != null
     ? `<line x1="${padX}" y1="${budgetY}" x2="${W - padX}" y2="${budgetY}" stroke="#F0A500" stroke-width="1.5" stroke-dasharray="3,3"/>`
     : "";
   const points = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
   const dot = `<circle cx="${xs[xs.length-1].toFixed(1)}" cy="${ys[ys.length-1].toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1"/>`;
-  const label = budgetMonthly > 0 ? ` · budget ${fmt(budgetMonthly)}/mo` : "";
-  return `<svg width="${W}" height="${H}" style="vertical-align:middle;margin-left:8px;overflow:visible" title="6-month FinOps trend${label} · ${overBudget?"⚠ Over budget last 3 months":"✓ Within budget"}">
+  const budgetNote = groupBudget ? ` · ADA group budget ${fmt(budgetMonthly)}/mo` : (budgetMonthly > 0 ? ` · budget ${fmt(budgetMonthly)}/mo` : "");
+  return `<svg width="${W}" height="${H}" style="vertical-align:middle;margin-left:8px;overflow:visible" title="6-month FinOps trend${budgetNote} · ${overBudget?"⚠ Over budget last 3 months":"✓ Within budget"}">
     ${budgetLine}
     <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     ${dot}
@@ -1036,7 +1037,19 @@ async function loadRunCost(month) {
   </tr>`;
 
   const ADA_GROUP_BUDGET = 244_000 / 12;  // $20,333/mo — group total, not per-workload
-  let adaRows = adaProj.map(makeProjectRow).join("");
+  // ADA sparkline: colour based on group budget, no individual budget line shown
+  const makeAdaProjectRow = r => {
+    const spk = sparklines[r.workload];
+    const spkSvg = spk ? sparklineSvg(spk.months, ADA_GROUP_BUDGET, true) : "";
+    return `<tr>
+    <td>${r.workload}${spkSvg}</td><td>${r.domain}</td><td>${r.budget_manager}</td>
+    <td class="num">—</td>
+    ${aC(r)}
+    <td class="num">—</td>
+    ${rpTelstra(r)}${devCell(null)}
+  </tr>`;
+  };
+  let adaRows = adaProj.map(makeAdaProjectRow).join("");
   const adaActual = adaProj.reduce((s,r) => s + r.actual, 0);
   const adaFinops = adaProj.reduce((s,r) => s + r.total, 0);
   const adaDev    = adaActual - ADA_GROUP_BUDGET;
@@ -1122,7 +1135,7 @@ async function loadRunCost(month) {
   const DONUT_COLORS = ["#2B3752","#4A6FA5","#E65100","#2E7D32","#7B1FA2","#C62828","#00838F","#EF6C00","#4527A0","#558B2F"];
   const domainEntries = Object.entries(domainMap).sort((a,b) => b[1]-a[1]);
   // SVG donut — larger, centered
-  const R = 80, ri = 50, cx = 96, cy = 96;
+  const R = 110, ri = 68, cx = 128, cy = 128;
   let cumAngle = -Math.PI / 2;
   const slices = domainEntries.map(([dom, amt], i) => {
     const frac = domainTotal > 0 ? amt / domainTotal : 0;
@@ -1136,29 +1149,29 @@ async function loadRunCost(month) {
     const col = DONUT_COLORS[i % DONUT_COLORS.length];
     const pct = (frac * 100).toFixed(1);
     const path = frac < 0.001 ? "" :
-      `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg},1 ${x2.toFixed(2)},${y2.toFixed(2)} L${xi2.toFixed(2)},${yi2.toFixed(2)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(2)},${yi1.toFixed(2)} Z" fill="${col}" stroke="var(--surface)" stroke-width="2">
+      `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg},1 ${x2.toFixed(2)},${y2.toFixed(2)} L${xi2.toFixed(2)},${yi2.toFixed(2)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(2)},${yi1.toFixed(2)} Z" fill="${col}" stroke="var(--surface)" stroke-width="2.5">
         <title>${dom}: ${fmt(amt)} (${pct}%)</title></path>`;
     return { dom, amt, pct, col, path };
   });
-  const donutSvg = `<svg viewBox="0 0 192 192" width="192" height="192" style="flex-shrink:0;display:block">
+  const donutSvg = `<svg viewBox="0 0 256 256" width="256" height="256" style="flex-shrink:0;display:block">
     ${slices.map(s => s.path).join("")}
     <circle cx="${cx}" cy="${cy}" r="${ri - 1}" fill="var(--surface)"/>
-    <text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="11" fill="var(--muted)">Total</text>
-    <text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="15" font-weight="700" fill="var(--navy)">${fmt(domainTotal)}</text>
+    <text x="${cx}" y="${cy - 14}" text-anchor="middle" font-size="13" fill="var(--muted)" font-weight="500">Total</text>
+    <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-size="20" font-weight="700" fill="var(--navy)">${fmt(domainTotal)}</text>
   </svg>`;
   const donutLegend = slices.map(s =>
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:${s.col};flex-shrink:0"></span>
-      <span style="font-size:.82rem;color:var(--navy);flex:1">${s.dom}</span>
-      <span style="font-size:.82rem;color:var(--navy);font-weight:600;white-space:nowrap">${fmt(s.amt)}</span>
-      <span style="font-size:.78rem;color:var(--muted);min-width:40px;text-align:right">${s.pct}%</span>
+    `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${s.col};flex-shrink:0"></span>
+      <span style="font-size:.9rem;color:var(--navy);flex:1">${s.dom}</span>
+      <span style="font-size:.9rem;color:var(--navy);font-weight:600;white-space:nowrap">${fmt(s.amt)}</span>
+      <span style="font-size:.85rem;color:var(--muted);min-width:44px;text-align:right">${s.pct}%</span>
     </div>`
   ).join("");
-  const domainCard = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin-bottom:20px">
-    <div style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--navy);margin-bottom:16px">Spend by Domain / Outcome Group</div>
-    <div style="display:flex;gap:32px;align-items:center;justify-content:center;flex-wrap:wrap">
+  const domainCard = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px 28px;margin-bottom:20px">
+    <div style="font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--navy);margin-bottom:20px">Spend by Domain / Outcome Group</div>
+    <div style="display:flex;gap:40px;align-items:center;justify-content:center;flex-wrap:wrap">
       ${donutSvg}
-      <div style="min-width:260px;max-width:360px">${donutLegend}</div>
+      <div style="min-width:280px;max-width:400px">${donutLegend}</div>
     </div>
   </div>`;
 
