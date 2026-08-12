@@ -788,20 +788,22 @@ function sparklineSvg(monthlyData, budgetMonthly) {
   const last3 = vals.slice(-3);
   const overBudget = budgetMonthly > 0 && last3.some(v => v > budgetMonthly);
   const color = overBudget ? "#E53935" : "#2E7D32";
-  const W = 52, H = 18, pad = 2;
-  const max = Math.max(...vals, budgetMonthly || 0) * 1.05 || 1;
-  const min = 0;
-  const xs = vals.map((_, i) => pad + (i / (vals.length - 1)) * (W - pad * 2));
-  const ys = vals.map(v => H - pad - ((v - min) / (max - min)) * (H - pad * 2));
-  const path = xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
-  const budgetY = budgetMonthly > 0 ? (H - pad - ((budgetMonthly - min) / (max - min)) * (H - pad * 2)).toFixed(1) : null;
+  const W = 90, H = 28, padX = 3, padY = 4;
+  const maxV = Math.max(...vals, budgetMonthly || 0) * 1.08 || 1;
+  const toX = (i) => padX + (i / (vals.length - 1)) * (W - padX * 2);
+  const toY = (v) => H - padY - (v / maxV) * (H - padY * 2);
+  const xs = vals.map((_, i) => toX(i));
+  const ys = vals.map(v => toY(v));
+  const budgetY = budgetMonthly > 0 ? toY(budgetMonthly).toFixed(1) : null;
   const budgetLine = budgetY != null
-    ? `<line x1="${pad}" y1="${budgetY}" x2="${W - pad}" y2="${budgetY}" stroke="#F0A500" stroke-width="1" stroke-dasharray="2,2" opacity=".7"/>`
+    ? `<line x1="${padX}" y1="${budgetY}" x2="${W - padX}" y2="${budgetY}" stroke="#F0A500" stroke-width="1.5" stroke-dasharray="3,3"/>`
     : "";
-  const dot = `<circle cx="${xs[xs.length-1].toFixed(1)}" cy="${ys[ys.length-1].toFixed(1)}" r="2.5" fill="${color}"/>`;
-  return `<svg width="${W}" height="${H}" style="vertical-align:middle;margin-left:6px" title="6-month trend · ${overBudget?"Over budget in last 3 months":"Within budget"}">
+  const points = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  const dot = `<circle cx="${xs[xs.length-1].toFixed(1)}" cy="${ys[ys.length-1].toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1"/>`;
+  const label = budgetMonthly > 0 ? ` · budget ${fmt(budgetMonthly)}/mo` : "";
+  return `<svg width="${W}" height="${H}" style="vertical-align:middle;margin-left:8px;overflow:visible" title="6-month FinOps trend${label} · ${overBudget?"⚠ Over budget last 3 months":"✓ Within budget"}">
     ${budgetLine}
-    <polyline points="${xs.map((x,i)=>`${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     ${dot}
   </svg>`;
 }
@@ -1114,13 +1116,13 @@ async function loadRunCost(month) {
   [...d.consumption_rows, ...d.project_rows, ...d.shared_rows].forEach(r => {
     const dom = r.domain || "Other";
     if (!domainMap[dom]) domainMap[dom] = 0;
-    domainMap[dom] += r.actual || 0;
+    domainMap[dom] += r.total != null ? r.total : (r.actual || 0);
   });
   const domainTotal = Object.values(domainMap).reduce((s,v) => s+v, 0);
   const DONUT_COLORS = ["#2B3752","#4A6FA5","#E65100","#2E7D32","#7B1FA2","#C62828","#00838F","#EF6C00","#4527A0","#558B2F"];
   const domainEntries = Object.entries(domainMap).sort((a,b) => b[1]-a[1]);
-  // SVG donut
-  const R = 54, r = 32, cx = 64, cy = 64;
+  // SVG donut — larger, centered
+  const R = 80, ri = 50, cx = 96, cy = 96;
   let cumAngle = -Math.PI / 2;
   const slices = domainEntries.map(([dom, amt], i) => {
     const frac = domainTotal > 0 ? amt / domainTotal : 0;
@@ -1128,35 +1130,35 @@ async function loadRunCost(month) {
     const x1 = cx + R * Math.cos(cumAngle), y1 = cy + R * Math.sin(cumAngle);
     cumAngle += angle;
     const x2 = cx + R * Math.cos(cumAngle), y2 = cy + R * Math.sin(cumAngle);
-    const xi1 = cx + r * Math.cos(cumAngle - angle), yi1 = cy + r * Math.sin(cumAngle - angle);
-    const xi2 = cx + r * Math.cos(cumAngle), yi2 = cy + r * Math.sin(cumAngle);
+    const xi1 = cx + ri * Math.cos(cumAngle - angle), yi1 = cy + ri * Math.sin(cumAngle - angle);
+    const xi2 = cx + ri * Math.cos(cumAngle), yi2 = cy + ri * Math.sin(cumAngle);
     const lg = angle > Math.PI ? 1 : 0;
     const col = DONUT_COLORS[i % DONUT_COLORS.length];
     const pct = (frac * 100).toFixed(1);
     const path = frac < 0.001 ? "" :
-      `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg},1 ${x2.toFixed(2)},${y2.toFixed(2)} L${xi2.toFixed(2)},${yi2.toFixed(2)} A${r},${r} 0 ${lg},0 ${xi1.toFixed(2)},${yi1.toFixed(2)} Z" fill="${col}">
+      `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg},1 ${x2.toFixed(2)},${y2.toFixed(2)} L${xi2.toFixed(2)},${yi2.toFixed(2)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(2)},${yi1.toFixed(2)} Z" fill="${col}" stroke="var(--surface)" stroke-width="2">
         <title>${dom}: ${fmt(amt)} (${pct}%)</title></path>`;
     return { dom, amt, pct, col, path };
   });
-  const donutSvg = `<svg viewBox="0 0 128 128" width="128" height="128" style="flex-shrink:0">
+  const donutSvg = `<svg viewBox="0 0 192 192" width="192" height="192" style="flex-shrink:0;display:block">
     ${slices.map(s => s.path).join("")}
-    <circle cx="${cx}" cy="${cy}" r="${r-1}" fill="var(--surface)"/>
-    <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">Total</text>
-    <text x="${cx}" y="${cy + 8}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--navy)">${fmt(domainTotal)}</text>
+    <circle cx="${cx}" cy="${cy}" r="${ri - 1}" fill="var(--surface)"/>
+    <text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="11" fill="var(--muted)">Total</text>
+    <text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="15" font-weight="700" fill="var(--navy)">${fmt(domainTotal)}</text>
   </svg>`;
   const donutLegend = slices.map(s =>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.col};flex-shrink:0"></span>
-      <span style="font-size:.76rem;color:var(--navy);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${s.dom}">${s.dom}</span>
-      <span style="font-size:.74rem;color:var(--muted);white-space:nowrap">${fmt(s.amt)}</span>
-      <span style="font-size:.72rem;color:var(--muted);min-width:32px;text-align:right">${s.pct}%</span>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:${s.col};flex-shrink:0"></span>
+      <span style="font-size:.82rem;color:var(--navy);flex:1">${s.dom}</span>
+      <span style="font-size:.82rem;color:var(--navy);font-weight:600;white-space:nowrap">${fmt(s.amt)}</span>
+      <span style="font-size:.78rem;color:var(--muted);min-width:40px;text-align:right">${s.pct}%</span>
     </div>`
   ).join("");
-  const domainCard = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:16px;display:inline-block;vertical-align:top">
-    <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--navy);margin-bottom:10px">Spend by Domain / Outcome Group</div>
-    <div style="display:flex;gap:16px;align-items:center">
+  const domainCard = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin-bottom:20px">
+    <div style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--navy);margin-bottom:16px">Spend by Domain / Outcome Group</div>
+    <div style="display:flex;gap:32px;align-items:center;justify-content:center;flex-wrap:wrap">
       ${donutSvg}
-      <div style="min-width:180px;max-width:240px">${donutLegend}</div>
+      <div style="min-width:260px;max-width:360px">${donutLegend}</div>
     </div>
   </div>`;
 
