@@ -175,11 +175,12 @@ input[type=file]{display:none}
 /* ── summary chart cards ── */
 .chart-card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:18px 16px 12px}
 .chart-card-hdr{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-.chart-card-title{font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
-.chart-status{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:700;
-              padding:3px 10px;border-radius:10px;white-space:nowrap}
+.chart-card-title{font-size:1.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.chart-status{display:inline-flex;align-items:center;gap:5px;font-size:1.44rem;font-weight:700;
+              padding:6px 16px;border-radius:10px;white-space:nowrap}
 .chart-status-ok  {background:#e8f5e9;color:#1A7A4A}
 .chart-status-over{background:#fdecea;color:#C0392B}
+.chart-status-badges{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:900px){.chart-grid{grid-template-columns:1fr}}
 .chart-bar{transition:opacity .12s;cursor:default}
@@ -421,7 +422,7 @@ input[type=file]{display:none}
   <div class="chart-card">
     <div class="chart-card-hdr">
       <div class="chart-card-title" style="color:#2B3752">AWS Spend — Run + MES + CNA + ADA</div>
-      <div id="chart-status-run"></div>
+      <div class="chart-status-badges" id="chart-status-badges"></div>
     </div>
     <div id="chart-consolidated"><div class="no-data" style="padding:32px">No data available.</div></div>
   </div>
@@ -2149,17 +2150,26 @@ function renderConsolidatedChart(elId, statusId, months) {
     ${grid}${yLbls}${fyDividers}${bars}${xLbls}${legendSvg}
   </svg>`;
 
-  // Status badge using Run Cost as reference
-  const statusEl = document.getElementById(statusId);
-  if (statusEl) {
+  // Status badges — Run, MES, CNA, ADA
+  const badgesEl = document.getElementById("chart-status-badges");
+  if (badgesEl) {
     const latest = [...months].reverse().find(m => m.run_finops != null);
-    if (latest && latest.forecast_run != null) {
-      const diff = latest.run_finops - latest.forecast_run;
-      const lbl  = new Date(latest.month).toLocaleDateString("en-AU", {month:"short", year:"numeric"});
-      statusEl.innerHTML = diff > 500
-        ? `<span class="chart-status chart-status-over">⚠ Run ${fmt(diff)} over forecast (${lbl})</span>`
-        : `<span class="chart-status chart-status-ok">✓ Run on track (${lbl})</span>`;
-    } else { statusEl.innerHTML = ""; }
+    if (latest) {
+      const lbl = new Date(latest.month).toLocaleDateString("en-AU", {month:"short", year:"numeric"});
+      const makeBadge = (label, finops, forecast) => {
+        if (finops == null || forecast == null) return "";
+        const diff = finops - forecast;
+        return diff > 500
+          ? `<span class="chart-status chart-status-over">⚠ ${label} ${fmt(diff)} over (${lbl})</span>`
+          : `<span class="chart-status chart-status-ok">✓ ${label} on track (${lbl})</span>`;
+      };
+      badgesEl.innerHTML = [
+        makeBadge("Run",  latest.run_finops,  latest.forecast_run),
+        makeBadge("MES",  latest.mes_finops,  latest.forecast_mes),
+        makeBadge("CNA",  latest.cna_finops,  latest.forecast_cna),
+        makeBadge("ADA",  latest.ada_finops,  latest.forecast_ada),
+      ].join("");
+    } else { badgesEl.innerHTML = ""; }
   }
 
   // Hover tooltips
@@ -2230,13 +2240,13 @@ function showConsolidatedTip(e, bar, months) {
   tip.innerHTML = `<strong style="font-size:.82rem">${lbl}</strong>
     <div style="font-size:.75rem;margin-top:2px;color:#bbb">Grand Total: <strong style="color:#fff">${fmt(total)}</strong></div>
     ${projHtml}
+    ${moversHtml}
     <div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;font-size:.76rem;line-height:1.6">
       ${segRow("Run Cost",     mData.run_finops, mData.run_actual,  mData.run_shared_alloc,  mData.run_telstra_diff,  "#90A4BC", mData.forecast_run)}
       ${segRow("MES",          mData.mes_finops, mData.mes_actual,  mData.mes_shared_alloc,  mData.mes_telstra_diff,  "#CE93D8", mData.forecast_mes)}
       ${segRow("CNA",          mData.cna_finops, mData.cna_actual,  mData.cna_shared_alloc,  mData.cna_telstra_diff,  "#FFAB76", mData.forecast_cna)}
       ${segRow("ADA Projects", mData.ada_finops, mData.ada_finops,  0,                        0,                       "#81C784", mData.forecast_ada)}
-    </div>
-    ${moversHtml}`;
+    </div>`;
   tip.style.display = "block";
   posBarTip(e);
 }
