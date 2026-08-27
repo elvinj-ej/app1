@@ -1841,31 +1841,35 @@ def api_project_email(month, workload_key):
                     f'white-space:nowrap;overflow:hidden">{d["display"]}</td>'
                 )
 
-            # Legend: bgcolor swatches via table cells (never stripped)
+            # Legend: each item is a nested 2-cell table so swatch+label stay on one row
+            # (margin-left on <span> is stripped by email clients)
             def _swatch(color, label, is_line=False):
                 if is_line:
-                    # 24px wide dashed border-top — renders as continuous dashed line in email
-                    sw = (
-                        f'<table cellpadding="0" cellspacing="0" '
-                        f'style="display:inline-table;border-collapse:collapse;vertical-align:middle">'
+                    sw_cell = (
+                        f'<td width="24" valign="middle" style="padding:0;font-size:0;line-height:0">'
+                        f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
                         f'<tr><td width="24" height="6" '
                         f'style="border-top:2px dashed {color};font-size:0;line-height:0"> </td></tr>'
-                        f'</table>'
+                        f'</table></td>'
                     )
                 else:
-                    sw = (
-                        f'<table cellpadding="0" cellspacing="0" '
-                        f'style="display:inline-table;border-collapse:collapse;vertical-align:middle">'
+                    sw_cell = (
+                        f'<td width="12" valign="middle" style="padding:0;font-size:0;line-height:0">'
+                        f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
                         f'<tr><td width="12" height="12" bgcolor="{color}" '
                         f'style="background:{color};font-size:0;line-height:0"> </td></tr>'
-                        f'</table>'
+                        f'</table></td>'
                     )
+                lbl_cell = (
+                    f'<td valign="middle" style="padding:0 18px 0 5px;'
+                    f'font-size:11px;color:#333;font-family:Arial,sans-serif;white-space:nowrap">'
+                    f'{label}</td>'
+                )
                 return (
-                    f'<td style="padding:0 20px 6px 0;white-space:nowrap;vertical-align:middle">'
-                    + sw +
-                    f'<span style="font-size:11px;color:#333;font-family:Arial,sans-serif;'
-                    f'margin-left:5px">{label}</span>'
-                    f'</td>'
+                    f'<td valign="middle" style="padding:0">'
+                    f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
+                    f'<tr>{sw_cell}{lbl_cell}</tr>'
+                    f'</table></td>'
                 )
 
             legend_rows = ""
@@ -1902,7 +1906,8 @@ def api_project_email(month, workload_key):
                 f'</tr>'
                 f'</table>'
                 f'<table cellpadding="0" cellspacing="0" '
-                f'style="border-collapse:collapse;margin-top:28px">'
+                f'style="border-collapse:collapse">'
+                f'<tr><td height="28" style="font-size:0;line-height:0"> </td></tr>'
                 f'<tr>{legend_rows}</tr>'
                 f'</table>'
                 '</td></tr>'
