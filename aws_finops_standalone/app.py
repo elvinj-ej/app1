@@ -1845,11 +1845,18 @@ def api_project_email(month, workload_key):
             # (margin-left on <span> is stripped by email clients)
             def _swatch(color, label, is_line=False):
                 if is_line:
+                    # Explicit dash pattern: three 6px colored segments with 4px gaps
+                    # Works in all email clients regardless of how they render CSS dashes
                     sw_cell = (
-                        f'<td width="24" valign="middle" style="padding:0;font-size:0;line-height:0">'
+                        f'<td width="32" valign="middle" style="padding:0;font-size:0;line-height:0">'
                         f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
-                        f'<tr><td width="24" height="6" '
-                        f'style="border-top:2px dashed {color};font-size:0;line-height:0"> </td></tr>'
+                        f'<tr>'
+                        f'<td width="7" height="3" bgcolor="{color}" style="background:{color};font-size:0;line-height:0"> </td>'
+                        f'<td width="3" height="3" style="font-size:0;line-height:0"> </td>'
+                        f'<td width="7" height="3" bgcolor="{color}" style="background:{color};font-size:0;line-height:0"> </td>'
+                        f'<td width="3" height="3" style="font-size:0;line-height:0"> </td>'
+                        f'<td width="7" height="3" bgcolor="{color}" style="background:{color};font-size:0;line-height:0"> </td>'
+                        f'</tr>'
                         f'</table></td>'
                     )
                 else:
