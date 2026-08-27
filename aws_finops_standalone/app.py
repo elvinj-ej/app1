@@ -1564,8 +1564,16 @@ def api_project_email(month, workload_key):
                 if mo == 0: mo = 12; y -= 1
             return f"{y:04d}-{mo:02d}-01"
 
-        # ── gather current + last 3 months data ──────────────────────────────
-        months_needed = [month] + [_prev_month(month, i) for i in range(1, 4)]
+        # ── gather current month + full FY months for chart ──────────────────
+        yr, mo, _ = (int(x) for x in month.split("-"))
+        fy_start_year = yr - 1 if mo >= 7 else yr - 2  # FY starts Jul
+        fy_months_all = []
+        for fy_mo in range(1, 13):
+            fy_yr = fy_start_year if fy_mo >= 7 else fy_start_year + 1
+            m_str = f"{fy_yr:04d}-{fy_mo:02d}-01"
+            if m_str <= month:
+                fy_months_all.append(m_str)
+        months_needed = list(dict.fromkeys([month] + [_prev_month(month, i) for i in range(1, 4)] + fy_months_all))
 
         def _extract(d, wl_key):
             """Pull relevant figures from compute() output for this workload key."""
@@ -1665,32 +1673,76 @@ def api_project_email(month, workload_key):
 
         dev_color = "#C0392B" if (deviation or 0) > 0 else "#1B7340"
 
-        # ── trend rows ────────────────────────────────────────────────────────
-        trend_col_hdr = "Actual (no alloc)" if is_ada else "Total Cross Charge"
+        # ── FY sparkline chart (SVG, email-safe inline) ───────────────────────
         trend_html = ""
-        if trend:
-            trend_rows = ""
-            for t in trend:
-                trend_rows += (
-                    '<tr>'
-                    '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;font-weight:600">' + t["display"] + '</td>'
-                    '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">' + fmtd(t["actual"]) + '</td>'
-                    '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right">' + fmtd(t["marketplace"]) + '</td>'
-                    '<td style="padding:9px 14px;border-bottom:1px solid #EEF0F3;text-align:right;font-weight:600">' + fmtd(t["finops"]) + '</td>'
-                    '</tr>'
-                )
+        fy_chart_data = []
+        for m in fy_months_all:
+            if computed.get(m):
+                ex = _extract(computed[m], workload_key)
+                if ex:
+                    fy_chart_data.append({"month": m, "display": _display(m), "finops": ex["finops"]})
+
+        if fy_chart_data:
+            # Determine budget line value
+            if is_ada:
+                bud_line = _ADA_GROUP_BUDGET
+            else:
+                bud_line = _period_budget(workload_key, month, cur["budget"])
+
+            vals = [d["finops"] for d in fy_chart_data]
+            max_v = max(max(vals), bud_line or 0) * 1.12 or 1
+            W, H, PL, PR, PT, PB = 520, 160, 60, 16, 16, 36
+            cW, cH = W - PL - PR, H - PT - PB
+
+            def to_x(i, n):
+                return PL + (i / max(n - 1, 1)) * cW
+
+            def to_y(v):
+                return PT + cH - (v / max_v) * cH
+
+            # Grid lines
+            grid = ""
+            for pct in [0, 25, 50, 75, 100]:
+                yg = PT + cH - (pct / 100) * cH
+                grid += (f'<line x1="{PL}" y1="{yg:.1f}" x2="{W - PR}" y2="{yg:.1f}" '
+                         f'stroke="#E8ECF2" stroke-width="1"/>')
+                v_label = f"${(max_v * pct / 100 / 1000):.0f}k" if max_v * pct / 100 >= 1000 else f"${max_v * pct / 100:.0f}"
+                grid += (f'<text x="{PL - 4}" y="{yg + 4:.1f}" text-anchor="end" '
+                         f'font-size="9" fill="#999" font-family="Arial,sans-serif">{v_label}</text>')
+
+            # Budget line
+            bud_svg = ""
+            if bud_line and bud_line > 0:
+                by = to_y(bud_line)
+                bud_svg = (f'<line x1="{PL}" y1="{by:.1f}" x2="{W - PR}" y2="{by:.1f}" '
+                           f'stroke="#F0A500" stroke-width="1.5" stroke-dasharray="4,3"/>'
+                           f'<text x="{W - PR + 2}" y="{by + 4:.1f}" font-size="8" fill="#F0A500" '
+                           f'font-family="Arial,sans-serif">Budget</text>')
+
+            # Bars
+            n = len(fy_chart_data)
+            bar_w = max(8, min(36, int(cW / max(n, 1) * 0.65)))
+            bars = ""
+            x_labels = ""
+            for i, d in enumerate(fy_chart_data):
+                cx_i = to_x(i, n)
+                y_top = to_y(d["finops"])
+                bar_h = (H - PB) - y_top
+                over = bud_line and d["finops"] > bud_line
+                col = "#C0392B" if over else "#2B3F6B"
+                bars += (f'<rect x="{cx_i - bar_w/2:.1f}" y="{y_top:.1f}" width="{bar_w}" '
+                         f'height="{bar_h:.1f}" fill="{col}" rx="2"/>')
+                x_labels += (f'<text x="{cx_i:.1f}" y="{H - PB + 14}" text-anchor="middle" '
+                              f'font-size="9" fill="#666" font-family="Arial,sans-serif">{d["display"]}</text>')
+
             trend_html = (
                 '<tr><td style="padding:0 36px 20px">'
-                '<p style="margin:0 0 10px 0;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">Last 3 Months Trend</p>'
-                '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DDE4EF">'
-                '<thead><tr bgcolor="#F4F6FA" style="background-color:#F4F6FA">'
-                '<th align="left" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Month</th>'
-                '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Actuals</th>'
-                '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">Marketplace</th>'
-                '<th align="right" style="padding:9px 14px;font-size:11px;font-weight:bold;color:#555555;text-transform:uppercase;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif;border-bottom:1px solid #DDE4EF">' + trend_col_hdr + '</th>'
-                '</tr></thead>'
-                '<tbody>' + trend_rows + '</tbody>'
-                '</table>'
+                '<p style="margin:0 0 8px 0;font-size:12px;font-weight:bold;text-transform:uppercase;'
+                'letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">FY27 Consumption Trend</p>'
+                f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
+                f'style="display:block;max-width:100%">'
+                f'{grid}{bud_svg}{bars}{x_labels}'
+                '</svg>'
                 '</td></tr>'
             )
 
@@ -1846,7 +1898,7 @@ def api_project_email(month, workload_key):
           <td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%">
             <p style="margin:0 0 4px 0;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#888888;font-family:Arial,Helvetica,sans-serif">Total Consumption</p>
             <p style="margin:0 0 3px 0;font-size:22px;font-weight:bold;color:#1A2744;font-family:Arial,Helvetica,sans-serif">""" + cur_actual_str + """</p>
-            <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">Expense + marketplace actuals</p>
+            <p style="margin:0;font-size:11px;color:#888888;font-family:Arial,Helvetica,sans-serif">Consumption only (excl. marketplace)</p>
           </td>
           <td width="8"></td>
           <td bgcolor="#F8FAFE" style="background-color:#F8FAFE;border:1px solid #DDE4EF;padding:14px 16px;width:33%">
@@ -1886,7 +1938,7 @@ def api_project_email(month, workload_key):
           </td>
         </tr></table>
       </td></tr>
-      """ + shared_note_html + ada_breakdown_html + trend_html + """
+      """ + ada_breakdown_html + trend_html + """
       <!-- ── MARKETPLACE TABLE ── -->
       <tr><td style="padding:0 36px 28px">
         <p style="margin:0 0 10px 0;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">Marketplace PO Purchases &mdash; """ + display_month + """</p>
