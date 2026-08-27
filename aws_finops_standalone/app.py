@@ -1741,100 +1741,100 @@ def api_project_email(month, workload_key):
             # at exactly bud_top_px from the top of the column.
             # segs: list of (height_px, bgcolor) top-to-bottom (used for ADA stacked)
             # If segs is None, a single bar of bar_px/BAR_COLOR is used.
-            def _col_rows(bar_px, segs=None):
-                BUD = (
-                    f'<tr><td width="{BAR_W}" '
-                    f'style="border-top:2px dashed #F0A500;height:0;'
-                    f'font-size:0;line-height:0"> </td></tr>'
+            # Build chart using 3 table rows so the budget line spans all columns
+            # as one continuous element rather than restarting per-column.
+            #
+            # row_above: for each col, content from chart top down to bud_top_px
+            # row_bud:   single <td colspan=n> with the dashed border (one line)
+            # row_below: for each col, content from bud_top_px down to baseline
+            # If no budget, just one row with the full column.
+
+            def _cell(h, c):
+                """One bgcolor td of height h."""
+                if h <= 0:
+                    return ""
+                return (
+                    f'<td width="{BAR_W}" height="{h}" bgcolor="{c}" '
+                    f'style="background:{c};font-size:0;line-height:0"> </td>'
                 )
 
-                def _r(h, c):
-                    return (
-                        f'<tr><td width="{BAR_W}" height="{h}" bgcolor="{c}" '
-                        f'style="background:{c};font-size:0;line-height:0"> </td></tr>'
-                    ) if h > 0 else ""
-
-                if segs is None:
-                    segs = [(bar_px, BAR_COLOR)]
-
-                bar_top = CHART_H - bar_px  # chart-top distance to bar's top edge
-
+            def _col_above_below(bar_px, segs):
+                """Return (above_tds, below_tds) — one td per segment each side."""
+                bar_top = CHART_H - bar_px
                 if bud_top_px < 0:
-                    # No budget line
-                    out = _r(bar_top, BG_COLOR)
+                    # No budget — everything goes in above, below is empty
+                    above = _cell(bar_top, BG_COLOR)
                     for h, c in segs:
-                        out += _r(h, c)
-                    return out
+                        above += _cell(h, c)
+                    return above, ""
 
                 if bud_top_px <= bar_top:
-                    # Budget line is above bar (bar is below budget)
-                    out = _r(bud_top_px, BG_COLOR)
-                    out += BUD
-                    gap = bar_top - bud_top_px   # always >= 0 now
-                    out += _r(gap, BG_COLOR)
+                    # Bar entirely below budget
+                    above = _cell(bud_top_px, BG_COLOR)
+                    gap   = bar_top - bud_top_px
+                    below = _cell(gap, BG_COLOR)
                     for h, c in segs:
-                        out += _r(h, c)
-                    return out
+                        below += _cell(h, c)
+                    return above, below
 
-                # Budget line cuts through the bar ────────────────────────────────
-                # How far into the bar (from bar's top) does the line sit?
+                # Bar extends above budget — split segments at bud_in_bar from bar top
                 bud_in_bar = bud_top_px - bar_top
-
-                out = _r(bar_top, BG_COLOR)  # spacer above bar
-                px = 0
-                inserted = False
+                above = _cell(bar_top, BG_COLOR)
+                below = ""
+                px, done = 0, False
                 for h, c in segs:
-                    if not inserted and px + h > bud_in_bar:
+                    if not done and px + h > bud_in_bar:
                         before = bud_in_bar - px
                         after  = h - before
-                        out += _r(before, c)
-                        out += BUD
-                        out += _r(after, c)
-                        inserted = True
+                        above += _cell(before, c)
+                        below += _cell(after, c)
+                        done = True
+                    elif done:
+                        below += _cell(h, c)
                     else:
-                        out += _r(h, c)
+                        above += _cell(h, c)
                     px += h
-                if not inserted:
-                    out += BUD
-                return out
+                return above, below
 
-            # Build each bar column and its label
-            col_tables = ""
+            row_above_cells = ""
+            row_below_cells = ""
             label_cells = ""
+            n = len(fy_chart_data)
             for d in fy_chart_data:
                 bar_px = max(3, int(d["total"] / max_v * CHART_H))
 
                 if is_ada:
                     raw_segs = []
-                    for wl_name in _ADA_WL_ORDER:  # top segment → bottom segment
+                    for wl_name in _ADA_WL_ORDER:
                         wl_v = d["wl_vals"].get(wl_name, 0)
                         if wl_v <= 0:
                             continue
                         seg_h = max(2, int(wl_v / max_v * CHART_H))
                         raw_segs.append((seg_h, _ADA_WL_COLORS.get(wl_name, BAR_COLOR)))
-                    # Interleave 1px white separators between segments
                     segs = []
                     for i, (h, c) in enumerate(raw_segs):
                         segs.append((h, c))
                         if i < len(raw_segs) - 1:
                             segs.append((1, "#FFFFFF"))
-                    total_seg_px = sum(h for h, _ in segs)
-                    rows_html = _col_rows(total_seg_px, segs)
+                    bar_px = sum(h for h, _ in segs)
                 else:
-                    rows_html = _col_rows(bar_px)
+                    segs = [(bar_px, BAR_COLOR)]
 
-                bar_table = (
-                    f'<table cellpadding="0" cellspacing="0" width="{BAR_W}" '
-                    f'style="border-collapse:collapse;margin:0 auto">'
-                    + rows_html +
-                    f'</table>'
-                )
-                col_tables += (
-                    f'<td width="{COL_W}" valign="top" '
-                    f'style="padding:0 2px;text-align:center;vertical-align:top">'
-                    + bar_table +
-                    f'</td>'
-                )
+                above_tds, below_tds = _col_above_below(bar_px, segs)
+
+                # Wrap in a column-width td with centred inner table
+                def _col_td(inner_tds):
+                    return (
+                        f'<td width="{COL_W}" valign="top" '
+                        f'style="padding:0 2px;text-align:center;vertical-align:top">'
+                        f'<table cellpadding="0" cellspacing="0" width="{BAR_W}" '
+                        f'style="border-collapse:collapse;margin:0 auto">'
+                        f'<tr>{inner_tds}</tr>'
+                        f'</table></td>'
+                    )
+
+                row_above_cells += _col_td(above_tds)
+                row_below_cells += _col_td(below_tds)
                 label_cells += (
                     f'<td width="{COL_W}" style="padding:5px 2px 0 2px;text-align:center;'
                     f'font-size:10px;color:#555;font-family:Arial,sans-serif;'
@@ -1904,7 +1904,13 @@ def api_project_email(month, workload_key):
                 f'<td valign="top" style="padding-left:4px">'
                 f'<table cellpadding="0" cellspacing="0" '
                 f'style="border-collapse:collapse;border-bottom:2px solid #CCC">'
-                f'<tr>{col_tables}</tr>'
+                f'<tr>{row_above_cells}</tr>'
+                + (
+                    f'<tr><td colspan="{n}" height="0" '
+                    f'style="border-top:2px dashed #F0A500;font-size:0;line-height:0"> </td></tr>'
+                    f'<tr>{row_below_cells}</tr>'
+                    if bud_top_px >= 0 else ""
+                ) +
                 f'</table>'
                 f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
                 f'<tr>{label_cells}</tr>'
