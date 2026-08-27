@@ -1844,31 +1844,27 @@ def api_project_email(month, workload_key):
             # Legend: bgcolor swatches via table cells (never stripped)
             def _swatch(color, label, is_line=False):
                 if is_line:
+                    # 24px wide dashed border-top — renders as continuous dashed line in email
                     sw = (
-                        f'<table cellpadding="0" cellspacing="2" '
-                        f'style="display:inline-table;border-collapse:separate;'
-                        f'vertical-align:middle">'
-                        f'<tr>'
-                        f'<td width="4" height="4" bgcolor="{color}" style="background:{color};font-size:0"> </td>'
-                        f'<td width="2" height="4"> </td>'
-                        f'<td width="4" height="4" bgcolor="{color}" style="background:{color};font-size:0"> </td>'
-                        f'<td width="2" height="4"> </td>'
-                        f'<td width="4" height="4" bgcolor="{color}" style="background:{color};font-size:0"> </td>'
-                        f'</tr></table>'
+                        f'<table cellpadding="0" cellspacing="0" '
+                        f'style="display:inline-table;border-collapse:collapse;vertical-align:middle">'
+                        f'<tr><td width="24" height="6" '
+                        f'style="border-top:2px dashed {color};font-size:0;line-height:0"> </td></tr>'
+                        f'</table>'
                     )
                 else:
                     sw = (
                         f'<table cellpadding="0" cellspacing="0" '
                         f'style="display:inline-table;border-collapse:collapse;vertical-align:middle">'
-                        f'<tr><td width="11" height="11" bgcolor="{color}" '
+                        f'<tr><td width="12" height="12" bgcolor="{color}" '
                         f'style="background:{color};font-size:0;line-height:0"> </td></tr>'
                         f'</table>'
                     )
                 return (
-                    f'<td style="padding:0 14px 0 0;white-space:nowrap;vertical-align:middle">'
+                    f'<td style="padding:0 20px 6px 0;white-space:nowrap;vertical-align:middle">'
                     + sw +
-                    f'<span style="font-size:11px;color:#444;font-family:Arial,sans-serif;'
-                    f'margin-left:4px">{label}</span>'
+                    f'<span style="font-size:11px;color:#333;font-family:Arial,sans-serif;'
+                    f'margin-left:5px">{label}</span>'
                     f'</td>'
                 )
 
@@ -1906,7 +1902,7 @@ def api_project_email(month, workload_key):
                 f'</tr>'
                 f'</table>'
                 f'<table cellpadding="0" cellspacing="0" '
-                f'style="border-collapse:collapse;margin-top:18px">'
+                f'style="border-collapse:collapse;margin-top:28px">'
                 f'<tr>{legend_rows}</tr>'
                 f'</table>'
                 '</td></tr>'
