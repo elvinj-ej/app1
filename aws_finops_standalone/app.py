@@ -1709,7 +1709,7 @@ def api_project_email(month, workload_key):
             all_vals = [d["total"] for d in fy_chart_data]
             max_v = max(max(all_vals), bud_line or 0) * 1.15 or 1
 
-            CHART_H = 160
+            CHART_H = 220
             BG_COLOR = "#F5F5F5"
             BAR_COLOR = "#2B3F6B"  # all bars standard navy
 
@@ -1750,12 +1750,12 @@ def api_project_email(month, workload_key):
             # If no budget, just one row with the full column.
 
             def _cell(h, c):
-                """One bgcolor td of height h."""
+                """One stacked row of height h — must be <tr><td> so segments render vertically."""
                 if h <= 0:
                     return ""
                 return (
-                    f'<td width="{BAR_W}" height="{h}" bgcolor="{c}" '
-                    f'style="background:{c};font-size:0;line-height:0"> </td>'
+                    f'<tr><td width="{BAR_W}" height="{h}" bgcolor="{c}" '
+                    f'style="background:{c};font-size:0;line-height:0"> </td></tr>'
                 )
 
             def _col_above_below(bar_px, segs):
@@ -1822,14 +1822,15 @@ def api_project_email(month, workload_key):
 
                 above_tds, below_tds = _col_above_below(bar_px, segs)
 
-                # Wrap in a column-width td with centred inner table
-                def _col_td(inner_tds):
+                # Wrap in a column-width td with centred inner table.
+                # inner_rows is already a sequence of <tr><td>…</td></tr> rows.
+                def _col_td(inner_rows):
                     return (
                         f'<td width="{COL_W}" valign="top" '
                         f'style="padding:0 2px;text-align:center;vertical-align:top">'
                         f'<table cellpadding="0" cellspacing="0" width="{BAR_W}" '
                         f'style="border-collapse:collapse;margin:0 auto">'
-                        f'<tr>{inner_tds}</tr>'
+                        f'{inner_rows}'
                         f'</table></td>'
                     )
 
