@@ -1836,9 +1836,9 @@ def api_project_email(month, workload_key):
                     f'</td>'
                 )
                 label_cells += (
-                    f'<td width="{COL_W}" style="padding:5px 0 0 0;text-align:center;'
+                    f'<td width="{COL_W}" style="padding:5px 2px 0 2px;text-align:center;'
                     f'font-size:10px;color:#555;font-family:Arial,sans-serif;'
-                    f'white-space:nowrap">{d["display"]}</td>'
+                    f'white-space:nowrap;overflow:hidden">{d["display"]}</td>'
                 )
 
             # Legend: bgcolor swatches via table cells (never stripped)
