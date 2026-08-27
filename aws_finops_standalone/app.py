@@ -1709,75 +1709,82 @@ def api_project_email(month, workload_key):
             all_vals = [d["total"] for d in fy_chart_data]
             max_v = max(max(all_vals), bud_line or 0) * 1.15 or 1
 
-            CHART_H = 130
+            CHART_H = 130  # px height of bar area
+            BG_COLOR = "#F5F5F5"  # spacer / chart background
 
             def _fmt_k(v):
                 return f"${v/1000:.0f}k" if v >= 1000 else f"${v:.0f}"
 
-            # y-axis: 5 ticks, each tick row height = CHART_H/4
-            TICK_H = CHART_H // 4
+            # y-axis: 5 ticks rendered as table rows so heights match chart
+            TICK_H = CHART_H // 4  # 32px per tick
             y_tick_rows = ""
             for pct in [100, 75, 50, 25, 0]:
                 v = max_v * pct / 100
-                h = TICK_H if pct > 0 else 1
+                h = TICK_H if pct > 0 else 2
                 y_tick_rows += (
                     f'<tr><td height="{h}" valign="top" '
                     f'style="font-size:8px;color:#aaa;font-family:Arial,sans-serif;'
-                    f'white-space:nowrap;padding:0 3px 0 0;text-align:right;vertical-align:top">'
+                    f'white-space:nowrap;padding:0 4px 0 0;text-align:right;'
+                    f'vertical-align:top;line-height:1">'
                     f'{_fmt_k(v)}</td></tr>'
                 )
 
             n = len(fy_chart_data)
-            COL_W = max(34, min(58, 440 // max(n, 1)))
-            BAR_W = max(22, int(COL_W * 0.74))
+            COL_W = max(36, min(60, 440 // max(n, 1)))
+            BAR_W = max(24, int(COL_W * 0.72))
 
-            # Budget line as CSS gradient on chart-area wrapper div
+            # Budget line: include a 2px amber row in background column at bud position
             bud_top_px = int((1.0 - bud_line / max_v) * CHART_H) if bud_line and bud_line > 0 else -1
-            grad_bg = ""
-            if bud_top_px >= 0:
-                grad_bg = (
-                    f"background:linear-gradient(to bottom,"
-                    f"transparent {bud_top_px}px,"
-                    f"#F0A500 {bud_top_px}px,"
-                    f"#F0A500 {bud_top_px + 2}px,"
-                    f"transparent {bud_top_px + 2}px);"
-                )
 
-            # Bar cells and label cells (separate table rows)
-            bar_cells = ""
+            # Each bar column: a nested 3-row table (spacer | bar | gap)
+            # using bgcolor attr + height attr — never stripped by email clients
+            col_tables = ""
             label_cells = ""
             for d in fy_chart_data:
-                bar_px = max(2, int(d["total"] / max_v * CHART_H))
+                bar_px = max(3, int(d["total"] / max_v * CHART_H))
+                spacer_px = max(0, CHART_H - bar_px)
                 over = bud_line and d["total"] > bud_line
 
                 if is_ada:
-                    # Stacked segments: write in reversed order so bottom workload
-                    # is last in DOM and appears at the bottom with valign=bottom
-                    segs = ""
-                    for wl_name in reversed(_ADA_WL_ORDER):
+                    # Stacked rows: spacer on top, then one row per workload (top→bottom)
+                    seg_rows = ""
+                    total_seg_px = 0
+                    for wl_name in _ADA_WL_ORDER:  # top segment first → Clark AI last (bottom)
                         wl_v = d["wl_vals"].get(wl_name, 0)
                         if wl_v <= 0:
                             continue
-                        seg_h = max(1, int(wl_v / max_v * CHART_H))
+                        seg_h = max(2, int(wl_v / max_v * CHART_H))
+                        total_seg_px += seg_h
                         c = _ADA_WL_COLORS.get(wl_name, "#2B3F6B")
-                        segs = (
-                            f'<div style="width:{BAR_W}px;height:{seg_h}px;'
-                            f'background:{c};margin:0 auto;'
-                            f'border-bottom:1px solid rgba(255,255,255,0.3)"></div>'
-                        ) + segs
-                    bar_inner = segs
+                        seg_rows += (
+                            f'<tr><td width="{BAR_W}" height="{seg_h}" bgcolor="{c}" '
+                            f'style="background:{c};font-size:0;line-height:0"> </td></tr>'
+                        )
+                    spacer_px = max(0, CHART_H - total_seg_px)
+                    bar_table = (
+                        f'<table cellpadding="0" cellspacing="0" width="{BAR_W}" '
+                        f'style="border-collapse:collapse;margin:0 auto">'
+                        f'<tr><td width="{BAR_W}" height="{spacer_px}" bgcolor="{BG_COLOR}" '
+                        f'style="background:{BG_COLOR};font-size:0;line-height:0"> </td></tr>'
+                        + seg_rows +
+                        f'</table>'
+                    )
                 else:
-                    col = "#C0392B" if over else "#2B3F6B"
-                    bar_inner = (
-                        f'<div style="width:{BAR_W}px;height:{bar_px}px;'
-                        f'background:{col};margin:0 auto;border-radius:2px 2px 0 0"></div>'
+                    col_color = "#C0392B" if over else "#2B3F6B"
+                    bar_table = (
+                        f'<table cellpadding="0" cellspacing="0" width="{BAR_W}" '
+                        f'style="border-collapse:collapse;margin:0 auto">'
+                        f'<tr><td width="{BAR_W}" height="{spacer_px}" bgcolor="{BG_COLOR}" '
+                        f'style="background:{BG_COLOR};font-size:0;line-height:0"> </td></tr>'
+                        f'<tr><td width="{BAR_W}" height="{bar_px}" bgcolor="{col_color}" '
+                        f'style="background:{col_color};font-size:0;line-height:0"> </td></tr>'
+                        f'</table>'
                     )
 
-                # td height forces the cell to CHART_H; valign=bottom pins bar to baseline
-                bar_cells += (
-                    f'<td width="{COL_W}" height="{CHART_H}" valign="bottom" '
-                    f'style="padding:0;text-align:center;vertical-align:bottom">'
-                    + bar_inner +
+                col_tables += (
+                    f'<td width="{COL_W}" valign="top" '
+                    f'style="padding:0 2px;text-align:center;vertical-align:top">'
+                    + bar_table +
                     f'</td>'
                 )
                 label_cells += (
@@ -1786,74 +1793,106 @@ def api_project_email(month, workload_key):
                     f'white-space:nowrap">{d["display"]}</td>'
                 )
 
-            # Legend
-            if is_ada:
-                legend_items = "".join(
-                    f'<span style="display:inline-block;margin-right:10px;margin-bottom:3px">'
-                    f'<span style="display:inline-block;width:9px;height:9px;'
-                    f'background:{_ADA_WL_COLORS[wl]};border-radius:2px;'
-                    f'vertical-align:middle;margin-right:3px"></span>'
-                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">{wl}</span>'
-                    f'</span>'
-                    for wl in _ADA_WL_ORDER
+            # Budget line column: a single column aligned to budget position
+            # rendered as a 1px amber row inside the background column at the y-axis side
+            bud_row_top = ""
+            bud_row_line = ""
+            bud_row_bot = ""
+            if bud_top_px >= 0:
+                bud_row_top = (
+                    f'<tr><td height="{bud_top_px}" bgcolor="{BG_COLOR}" '
+                    f'style="background:{BG_COLOR};font-size:0;line-height:0"> </td></tr>'
                 )
-                legend_items += (
-                    f'<span style="display:inline-block;margin-right:10px;margin-bottom:3px">'
-                    f'<span style="display:inline-block;width:14px;height:2px;'
-                    f'background:#F0A500;vertical-align:middle;margin-right:3px"></span>'
-                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">'
-                    f'Group budget ({_fmt_k(bud_line)}/mo)</span>'
-                    f'</span>'
+                bud_row_line = (
+                    f'<tr><td height="2" bgcolor="#F0A500" '
+                    f'style="background:#F0A500;font-size:0;line-height:0"> </td></tr>'
                 )
-            else:
-                legend_items = (
-                    f'<span style="display:inline-block;margin-right:12px">'
-                    f'<span style="display:inline-block;width:14px;height:2px;'
-                    f'background:#F0A500;vertical-align:middle;margin-right:3px"></span>'
-                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">'
-                    f'Budget ({_fmt_k(bud_line)}/mo)</span>'
-                    f'</span>'
-                    f'<span style="display:inline-block;margin-right:12px">'
-                    f'<span style="display:inline-block;width:9px;height:9px;background:#2B3F6B;'
-                    f'border-radius:2px;vertical-align:middle;margin-right:3px"></span>'
-                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">Within budget</span>'
-                    f'</span>'
-                    f'<span style="display:inline-block">'
-                    f'<span style="display:inline-block;width:9px;height:9px;background:#C0392B;'
-                    f'border-radius:2px;vertical-align:middle;margin-right:3px"></span>'
-                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">Over budget</span>'
-                    f'</span>'
+                bud_row_bot = (
+                    f'<tr><td height="{CHART_H - bud_top_px - 2}" bgcolor="{BG_COLOR}" '
+                    f'style="background:{BG_COLOR};font-size:0;line-height:0"> </td></tr>'
                 )
 
-            # Assemble chart: y-axis | bar area (bars table + label table)
-            chart_area = (
-                f'<div style="{grad_bg}padding:0">'
-                f'<table cellpadding="0" cellspacing="0" '
-                f'style="border-collapse:collapse;border-bottom:2px solid #CCC">'
-                f'<tr>{bar_cells}</tr>'
+            # Legend using table cells with bgcolor for colour swatches
+            def _swatch(color, label):
+                return (
+                    f'<td style="padding:0 10px 0 0;white-space:nowrap;vertical-align:middle">'
+                    f'<table cellpadding="0" cellspacing="0" style="display:inline-table;'
+                    f'border-collapse:collapse;vertical-align:middle">'
+                    f'<tr><td width="9" height="9" bgcolor="{color}" '
+                    f'style="background:{color};font-size:0;line-height:0"> </td></tr>'
+                    f'</table>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif;'
+                    f'margin-left:3px">{label}</span>'
+                    f'</td>'
+                )
+
+            legend_rows = ""
+            if is_ada:
+                for wl in _ADA_WL_ORDER:
+                    legend_rows += _swatch(_ADA_WL_COLORS[wl], wl)
+                legend_rows += (
+                    f'<td style="padding:0 10px 0 0;white-space:nowrap;vertical-align:middle">'
+                    f'<table cellpadding="0" cellspacing="0" style="display:inline-table;'
+                    f'border-collapse:collapse;vertical-align:middle">'
+                    f'<tr><td width="14" height="2" bgcolor="#F0A500" '
+                    f'style="background:#F0A500;font-size:0;line-height:0"> </td></tr>'
+                    f'</table>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif;'
+                    f'margin-left:3px">Group budget ({_fmt_k(bud_line)}/mo)</span>'
+                    f'</td>'
+                )
+            else:
+                legend_rows += (
+                    f'<td style="padding:0 10px 0 0;white-space:nowrap;vertical-align:middle">'
+                    f'<table cellpadding="0" cellspacing="0" style="display:inline-table;'
+                    f'border-collapse:collapse;vertical-align:middle">'
+                    f'<tr><td width="14" height="2" bgcolor="#F0A500" '
+                    f'style="background:#F0A500;font-size:0;line-height:0"> </td></tr>'
+                    f'</table>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif;'
+                    f'margin-left:3px">Budget ({_fmt_k(bud_line)}/mo)</span>'
+                    f'</td>'
+                )
+                legend_rows += _swatch("#2B3F6B", "Within budget")
+                legend_rows += _swatch("#C0392B", "Over budget")
+
+            trend_html = (
+                '<tr><td style="padding:0 36px 20px">'
+                '<p style="margin:0 0 8px 0;font-size:12px;font-weight:bold;'
+                'text-transform:uppercase;letter-spacing:.8px;color:#1A2744;'
+                'font-family:Arial,Helvetica,sans-serif">FY27 Consumption Trend</p>'
+                # outer layout: [y-axis] [budget-line col] [bar columns]
+                '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
+                '<tr>'
+                # y-axis column
+                f'<td valign="top" style="padding-right:4px;border-right:1px solid #DDD">'
+                f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
+                f'<tbody>{y_tick_rows}</tbody>'
+                f'</table></td>'
+                # budget-line column (amber stripe at budget height)
+                + (
+                    f'<td width="3" valign="top" style="padding:0">'
+                    f'<table cellpadding="0" cellspacing="0" width="3" '
+                    f'style="border-collapse:collapse">'
+                    + bud_row_top + bud_row_line + bud_row_bot +
+                    f'</table></td>'
+                    if bud_top_px >= 0 else ''
+                ) +
+                # bar columns
+                f'<td valign="top" style="padding-left:4px">'
+                f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;'
+                f'border-bottom:2px solid #CCC">'
+                f'<tr>{col_tables}</tr>'
                 f'</table>'
                 f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
                 f'<tr>{label_cells}</tr>'
                 f'</table>'
-                f'</div>'
-            )
-
-            trend_html = (
-                '<tr><td style="padding:0 36px 20px">'
-                '<p style="margin:0 0 8px 0;font-size:12px;font-weight:bold;text-transform:uppercase;'
-                'letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">'
-                'FY27 Consumption Trend</p>'
-                '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
-                '<tr>'
-                f'<td valign="top" style="padding-right:5px;border-right:1px solid #DDD">'
-                f'<table cellpadding="0" cellspacing="0"><tbody>{y_tick_rows}</tbody></table>'
-                f'</td>'
-                f'<td valign="top" style="padding-left:6px">'
-                + chart_area +
                 f'</td>'
                 f'</tr>'
                 f'</table>'
-                f'<div style="margin-top:8px">{legend_items}</div>'
+                # legend
+                f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;'
+                f'margin-top:8px"><tr>{legend_rows}</tr></table>'
                 '</td></tr>'
             )
 
