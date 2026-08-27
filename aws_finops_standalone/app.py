@@ -1766,11 +1766,11 @@ def api_project_email(month, workload_key):
                         out += _r(h, c)
                     return out
 
-                if bud_top_px >= bar_top:
-                    # Budget line is above bar (bar is below budget) ─────────────
+                if bud_top_px <= bar_top:
+                    # Budget line is above bar (bar is below budget)
                     out = _r(bud_top_px, BG_COLOR)
                     out += BUD
-                    gap = bar_top - bud_top_px   # space between budget line and bar top
+                    gap = bar_top - bud_top_px   # always >= 0 now
                     out += _r(gap, BG_COLOR)
                     for h, c in segs:
                         out += _r(h, c)
