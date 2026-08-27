@@ -1709,7 +1709,7 @@ def api_project_email(month, workload_key):
             all_vals = [d["total"] for d in fy_chart_data]
             max_v = max(max(all_vals), bud_line or 0) * 1.15 or 1
 
-            CHART_H = 130
+            CHART_H = 160
             BG_COLOR = "#F5F5F5"
             BAR_COLOR = "#2B3F6B"  # all bars standard navy
 
@@ -1724,15 +1724,15 @@ def api_project_email(month, workload_key):
                 h = TICK_H if pct > 0 else max(0, CHART_H - 4 * TICK_H)
                 y_tick_rows += (
                     f'<tr><td height="{h}" valign="top" '
-                    f'style="font-size:8px;color:#aaa;font-family:Arial,sans-serif;'
-                    f'white-space:nowrap;padding:0 4px 0 0;text-align:right;'
+                    f'style="font-size:10px;color:#888;font-family:Arial,sans-serif;'
+                    f'white-space:nowrap;padding:0 6px 0 0;text-align:right;'
                     f'vertical-align:top;line-height:1">'
                     f'{_fmt_k(v)}</td></tr>'
                 )
 
             n = len(fy_chart_data)
-            COL_W = max(36, min(60, 440 // max(n, 1)))
-            BAR_W = max(24, int(COL_W * 0.72))
+            COL_W = max(44, min(68, 460 // max(n, 1)))
+            BAR_W = max(28, int(COL_W * 0.72))
 
             # Budget line position from top (pixels)
             bud_top_px = int((1.0 - bud_line / max_v) * CHART_H) if bud_line and bud_line > 0 else -1
@@ -1836,8 +1836,8 @@ def api_project_email(month, workload_key):
                     f'</td>'
                 )
                 label_cells += (
-                    f'<td width="{COL_W}" style="padding:3px 0 0 0;text-align:center;'
-                    f'font-size:8px;color:#666;font-family:Arial,sans-serif;'
+                    f'<td width="{COL_W}" style="padding:5px 0 0 0;text-align:center;'
+                    f'font-size:10px;color:#555;font-family:Arial,sans-serif;'
                     f'white-space:nowrap">{d["display"]}</td>'
                 )
 
@@ -1860,15 +1860,15 @@ def api_project_email(month, workload_key):
                     sw = (
                         f'<table cellpadding="0" cellspacing="0" '
                         f'style="display:inline-table;border-collapse:collapse;vertical-align:middle">'
-                        f'<tr><td width="9" height="9" bgcolor="{color}" '
+                        f'<tr><td width="11" height="11" bgcolor="{color}" '
                         f'style="background:{color};font-size:0;line-height:0"> </td></tr>'
                         f'</table>'
                     )
                 return (
-                    f'<td style="padding:0 12px 0 0;white-space:nowrap;vertical-align:middle">'
+                    f'<td style="padding:0 14px 0 0;white-space:nowrap;vertical-align:middle">'
                     + sw +
-                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif;'
-                    f'margin-left:3px">{label}</span>'
+                    f'<span style="font-size:11px;color:#444;font-family:Arial,sans-serif;'
+                    f'margin-left:4px">{label}</span>'
                     f'</td>'
                 )
 
@@ -1906,7 +1906,7 @@ def api_project_email(month, workload_key):
                 f'</tr>'
                 f'</table>'
                 f'<table cellpadding="0" cellspacing="0" '
-                f'style="border-collapse:collapse;margin-top:8px">'
+                f'style="border-collapse:collapse;margin-top:18px">'
                 f'<tr>{legend_rows}</tr>'
                 f'</table>'
                 '</td></tr>'
@@ -2104,7 +2104,7 @@ def api_project_email(month, workload_key):
           </td>
         </tr></table>
       </td></tr>
-      """ + ada_breakdown_html + trend_html + """
+      """ + trend_html + ada_breakdown_html + """
       <!-- ── MARKETPLACE TABLE ── -->
       <tr><td style="padding:0 36px 28px">
         <p style="margin:0 0 10px 0;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">Marketplace PO Purchases &mdash; """ + display_month + """</p>
