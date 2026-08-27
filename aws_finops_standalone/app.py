@@ -1566,7 +1566,7 @@ def api_project_email(month, workload_key):
 
         # ── gather current month + full FY months for chart ──────────────────
         yr, mo, _ = (int(x) for x in month.split("-"))
-        fy_start_year = yr - 1 if mo >= 7 else yr - 2  # FY starts Jul
+        fy_start_year = yr if mo >= 7 else yr - 1  # FY starts Jul; e.g. Aug-26 → FY27 start = 2026
         fy_months_all = []
         for fy_mo in range(1, 13):
             fy_yr = fy_start_year if fy_mo >= 7 else fy_start_year + 1
@@ -1673,76 +1673,174 @@ def api_project_email(month, workload_key):
 
         dev_color = "#C0392B" if (deviation or 0) > 0 else "#1B7340"
 
-        # ── FY sparkline chart (SVG, email-safe inline) ───────────────────────
+        # ── FY consumption chart (HTML table bars, email-safe) ───────────────
         trend_html = ""
+        FY27_START = "2026-07-01"
+        _ADA_WL_ORDER = ["Clark AI", "DataInsights", "Sonar", "Model Gateway"]
+        _ADA_WL_COLORS = {
+            "Clark AI":     "#2B3F6B",
+            "DataInsights": "#E07B39",
+            "Sonar":        "#6B8E23",
+            "Model Gateway":"#7B5EA7",
+        }
+
+        fy_chart_months = sorted(m for m in fy_months_all if m >= FY27_START)
         fy_chart_data = []
-        for m in fy_months_all:
-            if computed.get(m):
-                ex = _extract(computed[m], workload_key)
+        for m in fy_chart_months:
+            if not computed.get(m):
+                continue
+            d = computed[m]
+            if is_ada:
+                wl_vals = {}
+                for wl_name in _ADA_WL_ORDER:
+                    row = next((r for r in d["project_rows"] if r["workload"] == wl_name), None)
+                    wl_vals[wl_name] = float(row["actual"]) if row else 0.0
+                total = sum(wl_vals.values())
+                fy_chart_data.append({"month": m, "display": _display(m),
+                                      "total": total, "wl_vals": wl_vals})
+            else:
+                ex = _extract(d, workload_key)
                 if ex:
-                    fy_chart_data.append({"month": m, "display": _display(m), "finops": ex["finops"]})
+                    fy_chart_data.append({"month": m, "display": _display(m),
+                                          "total": ex["finops"]})
 
         if fy_chart_data:
-            # Determine budget line value
-            if is_ada:
-                bud_line = _ADA_GROUP_BUDGET
-            else:
-                bud_line = _period_budget(workload_key, month, cur["budget"])
+            bud_line = _ADA_GROUP_BUDGET if is_ada else _period_budget(workload_key, month, cur["budget"])
+            all_vals = [d["total"] for d in fy_chart_data]
+            max_v = max(max(all_vals), bud_line or 0) * 1.15 or 1
 
-            vals = [d["finops"] for d in fy_chart_data]
-            max_v = max(max(vals), bud_line or 0) * 1.12 or 1
-            W, H, PL, PR, PT, PB = 520, 160, 60, 16, 16, 36
-            cW, cH = W - PL - PR, H - PT - PB
+            CHART_H = 130  # px height of bar area
 
-            def to_x(i, n):
-                return PL + (i / max(n - 1, 1)) * cW
+            def _fmt_k(v):
+                return f"${v/1000:.0f}k" if v >= 1000 else f"${v:.0f}"
 
-            def to_y(v):
-                return PT + cH - (v / max_v) * cH
+            # y-axis label rows: generate 5 tick levels
+            y_tick_rows = ""
+            for pct in [100, 75, 50, 25, 0]:
+                v = max_v * pct / 100
+                row_h = CHART_H // 4 if pct > 0 else 1
+                y_tick_rows += (
+                    f'<tr><td height="{row_h}" valign="top" '
+                    f'style="font-size:8px;color:#aaa;font-family:Arial,sans-serif;'
+                    f'white-space:nowrap;padding:0 3px 0 0;text-align:right;vertical-align:top">'
+                    f'{_fmt_k(v)}</td></tr>'
+                )
 
-            # Grid lines
-            grid = ""
-            for pct in [0, 25, 50, 75, 100]:
-                yg = PT + cH - (pct / 100) * cH
-                grid += (f'<line x1="{PL}" y1="{yg:.1f}" x2="{W - PR}" y2="{yg:.1f}" '
-                         f'stroke="#E8ECF2" stroke-width="1"/>')
-                v_label = f"${(max_v * pct / 100 / 1000):.0f}k" if max_v * pct / 100 >= 1000 else f"${max_v * pct / 100:.0f}"
-                grid += (f'<text x="{PL - 4}" y="{yg + 4:.1f}" text-anchor="end" '
-                         f'font-size="9" fill="#999" font-family="Arial,sans-serif">{v_label}</text>')
-
-            # Budget line
-            bud_svg = ""
-            if bud_line and bud_line > 0:
-                by = to_y(bud_line)
-                bud_svg = (f'<line x1="{PL}" y1="{by:.1f}" x2="{W - PR}" y2="{by:.1f}" '
-                           f'stroke="#F0A500" stroke-width="1.5" stroke-dasharray="4,3"/>'
-                           f'<text x="{W - PR + 2}" y="{by + 4:.1f}" font-size="8" fill="#F0A500" '
-                           f'font-family="Arial,sans-serif">Budget</text>')
-
-            # Bars
             n = len(fy_chart_data)
-            bar_w = max(8, min(36, int(cW / max(n, 1) * 0.65)))
-            bars = ""
-            x_labels = ""
-            for i, d in enumerate(fy_chart_data):
-                cx_i = to_x(i, n)
-                y_top = to_y(d["finops"])
-                bar_h = (H - PB) - y_top
-                over = bud_line and d["finops"] > bud_line
-                col = "#C0392B" if over else "#2B3F6B"
-                bars += (f'<rect x="{cx_i - bar_w/2:.1f}" y="{y_top:.1f}" width="{bar_w}" '
-                         f'height="{bar_h:.1f}" fill="{col}" rx="2"/>')
-                x_labels += (f'<text x="{cx_i:.1f}" y="{H - PB + 14}" text-anchor="middle" '
-                              f'font-size="9" fill="#666" font-family="Arial,sans-serif">{d["display"]}</text>')
+            COL_W = max(32, min(56, 420 // max(n, 1)))
+            BAR_W = max(20, int(COL_W * 0.72))
+
+            # Budget dashed line: draw as an absolutely-positioned div in the bar area wrapper
+            bud_top_px = int((1.0 - bud_line / max_v) * CHART_H) if bud_line and bud_line > 0 else -1
+            bud_div = ""
+            if bud_top_px >= 0:
+                bud_div = (
+                    f'<div style="position:absolute;top:{bud_top_px}px;left:0;right:0;'
+                    f'border-top:2px dashed #F0A500;z-index:2"></div>'
+                )
+
+            bar_cells = ""
+            for d in fy_chart_data:
+                bar_px = max(2, int(d["total"] / max_v * CHART_H))
+                spacer_px = CHART_H - bar_px
+                over = bud_line and d["total"] > bud_line
+
+                if is_ada:
+                    # Build stacked segments bottom-to-top (render bottom-most last in DOM)
+                    wl_total = max(d["total"], 0.001)
+                    seg_divs = ""
+                    for wl_name in reversed(_ADA_WL_ORDER):
+                        wl_v = d["wl_vals"].get(wl_name, 0)
+                        if wl_v <= 0:
+                            continue
+                        seg_h = max(1, int(wl_v / max_v * CHART_H))
+                        c = _ADA_WL_COLORS.get(wl_name, "#2B3F6B")
+                        seg_divs += (
+                            f'<div style="width:{BAR_W}px;height:{seg_h}px;background:{c};'
+                            f'margin:0 auto;border-top:1px solid #fff"></div>'
+                        )
+                    bar_inner = (
+                        f'<div style="height:{spacer_px}px"></div>'
+                        + seg_divs
+                    )
+                else:
+                    col = "#C0392B" if over else "#2B3F6B"
+                    bar_inner = (
+                        f'<div style="height:{spacer_px}px"></div>'
+                        f'<div style="width:{BAR_W}px;height:{bar_px}px;background:{col};'
+                        f'margin:0 auto;border-radius:2px 2px 0 0"></div>'
+                    )
+
+                bar_cells += (
+                    f'<td width="{COL_W}" valign="bottom" '
+                    f'style="padding:0;text-align:center;vertical-align:bottom">'
+                    + bar_inner +
+                    f'<div style="font-size:8px;color:#666;font-family:Arial,sans-serif;'
+                    f'margin-top:3px;line-height:1.2">{d["display"]}</div>'
+                    f'</td>'
+                )
+
+            # Legend
+            if is_ada:
+                legend_items = "".join(
+                    f'<span style="display:inline-block;margin-right:10px;margin-bottom:3px">'
+                    f'<span style="display:inline-block;width:9px;height:9px;background:{_ADA_WL_COLORS[wl]};'
+                    f'border-radius:2px;vertical-align:middle;margin-right:3px"></span>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">{wl}</span>'
+                    f'</span>'
+                    for wl in _ADA_WL_ORDER
+                )
+                legend_items += (
+                    f'<span style="display:inline-block;margin-right:10px;margin-bottom:3px">'
+                    f'<span style="display:inline-block;width:12px;border-top:2px dashed #F0A500;'
+                    f'vertical-align:middle;margin-right:3px"></span>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">'
+                    f'Group budget ({_fmt_k(bud_line)}/mo)</span>'
+                    f'</span>'
+                )
+            else:
+                legend_items = (
+                    f'<span style="display:inline-block;margin-right:10px">'
+                    f'<span style="display:inline-block;width:12px;border-top:2px dashed #F0A500;'
+                    f'vertical-align:middle;margin-right:3px"></span>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">'
+                    f'Budget ({_fmt_k(bud_line)}/mo)</span>'
+                    f'</span>'
+                    f'<span style="display:inline-block;margin-right:10px">'
+                    f'<span style="display:inline-block;width:9px;height:9px;background:#2B3F6B;'
+                    f'border-radius:2px;vertical-align:middle;margin-right:3px"></span>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">Within budget</span>'
+                    f'</span>'
+                    f'<span style="display:inline-block">'
+                    f'<span style="display:inline-block;width:9px;height:9px;background:#C0392B;'
+                    f'border-radius:2px;vertical-align:middle;margin-right:3px"></span>'
+                    f'<span style="font-size:9px;color:#555;font-family:Arial,sans-serif">Over budget</span>'
+                    f'</span>'
+                )
 
             trend_html = (
                 '<tr><td style="padding:0 36px 20px">'
                 '<p style="margin:0 0 8px 0;font-size:12px;font-weight:bold;text-transform:uppercase;'
                 'letter-spacing:.8px;color:#1A2744;font-family:Arial,Helvetica,sans-serif">FY27 Consumption Trend</p>'
-                f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
-                f'style="display:block;max-width:100%">'
-                f'{grid}{bud_svg}{bars}{x_labels}'
-                '</svg>'
+                '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
+                '<tr>'
+                # y-axis column
+                f'<td valign="bottom" style="padding-right:4px;border-right:1px solid #E0E0E0">'
+                f'<table cellpadding="0" cellspacing="0"><tbody>{y_tick_rows}</tbody></table>'
+                f'</td>'
+                # bars column
+                f'<td valign="bottom" style="padding-left:6px">'
+                f'<div style="position:relative;height:{CHART_H}px;overflow:visible">'
+                + bud_div +
+                f'<table cellpadding="0" cellspacing="0" '
+                f'style="height:{CHART_H}px;border-collapse:collapse;border-bottom:1px solid #CCC">'
+                f'<tr>{bar_cells}</tr>'
+                f'</table>'
+                f'</div>'
+                f'</td>'
+                f'</tr>'
+                f'</table>'
+                f'<div style="margin-top:8px">{legend_items}</div>'
                 '</td></tr>'
             )
 
