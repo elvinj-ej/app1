@@ -20,7 +20,9 @@ DB_PATH = os.environ.get("AWS_DB_PATH", "")
 
 # ── Teams notification ─────────────────────────────────────────────────────────
 TEAMS_EMAIL       = "28cedabb.CochlearLtd.onmicrosoft.com@emea.teams.ms"
-SMTP_HOST         = "smtp.office365.com"
+# smtp.cochlear.com:587 — internal relay with O365 auth (relays to external @emea.teams.ms)
+# Fallback option: smtp.office365.com:587 (requires server IP to be trusted by tenant)
+SMTP_HOST         = "smtp.cochlear.com"
 SMTP_PORT         = 587
 SMTP_FROM         = "eedgar@cochlear.com"
 SMTP_USE_TLS      = True
