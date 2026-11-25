@@ -30,7 +30,7 @@ def send_weekly_report(markdown_summary: str, subject: str | None = None) -> Non
     msg.attach(MIMEText(html,             "html",  "utf-8"))
 
     password = config.SMTP_PASSWORD or os.environ.get("SMTP_PASSWORD", "")
-    with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT) as smtp:
+    with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
         if config.SMTP_USE_TLS:
             smtp.starttls()
