@@ -22,9 +22,9 @@ DB_PATH = os.environ.get("AWS_DB_PATH", "")
 TEAMS_EMAIL       = "28cedabb.CochlearLtd.onmicrosoft.com@emea.teams.ms"
 SMTP_HOST         = "smtp.office365.com"
 SMTP_PORT         = 587
-SMTP_FROM         = "elvin.edgar@cochlear.com"
+SMTP_FROM         = "eedgar@cochlear.com"
 SMTP_USE_TLS      = True
-SMTP_USER         = "elvin.edgar@cochlear.com"
+SMTP_USER         = "eedgar@cochlear.com"
 SMTP_PASSWORD     = "YOUR_PASSWORD_HERE"   # set via SMTP_PASSWORD env var instead if preferred
 
 # ── Agent behaviour ────────────────────────────────────────────────────────────
