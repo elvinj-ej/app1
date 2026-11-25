@@ -1,6 +1,6 @@
 @echo off
 REM AWS FinOps Tracker — Start Script
-REM Runs on http://0.0.0.0:4020/AWSFinOps
+REM Runs on http://0.0.0.0:4025/AWSFinOps
 
 cd /d "%~dp0"
 
@@ -14,6 +14,6 @@ REM set AD_GROUP=Domain Users
 REM set SECRET_KEY=your-secret-key-here
 REM set AWS_DATA_ROOT=C:\AWSFinOps\Data
 
-echo Starting AWS FinOps Tracker on port 4020...
+echo Starting AWS FinOps Tracker on port 4025...
 python app.py
 pause

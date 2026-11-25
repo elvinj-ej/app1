@@ -1,7 +1,7 @@
 """
 app.py — AWS FinOps Tracker (standalone)
 -----------------------------------------
-Serves at http://hostname:4020/AWSFinOps
+Serves at http://hostname:4025/AWSFinOps
 
 Run:  python app.py
 Uses Waitress (production-grade WSGI server for Windows).
@@ -39,7 +39,7 @@ from aws_run_cost import get_available_months, get_workloads, get_monthly_input,
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
 HOST    = "0.0.0.0"
-PORT    = 4020
+PORT    = int(os.environ.get("PORT", "4025"))
 MAX_MB  = 50
 
 DATA_ROOT  = os.environ.get("AWS_DATA_ROOT", r"C:\AWSFinOps\Data")
