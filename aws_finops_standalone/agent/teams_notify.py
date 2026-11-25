@@ -2,6 +2,7 @@
 Send a weekly FinOps summary to a Microsoft Teams channel via email.
 The Teams channel email relay accepts plain SMTP with no auth on internal networks.
 """
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -28,11 +29,14 @@ def send_weekly_report(markdown_summary: str, subject: str | None = None) -> Non
     msg.attach(MIMEText(markdown_summary, "plain", "utf-8"))
     msg.attach(MIMEText(html,             "html",  "utf-8"))
 
+    password = config.SMTP_PASSWORD or os.environ.get("SMTP_PASSWORD", "")
     with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT) as smtp:
+        smtp.ehlo()
         if config.SMTP_USE_TLS:
             smtp.starttls()
+            smtp.ehlo()
         if config.SMTP_USER:
-            smtp.login(config.SMTP_USER, config.SMTP_PASSWORD)
+            smtp.login(config.SMTP_USER, password)
         smtp.sendmail(config.SMTP_FROM, [config.TEAMS_EMAIL], msg.as_string())
 
     print(f"[teams_notify] Report sent to {config.TEAMS_EMAIL}")

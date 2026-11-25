@@ -20,12 +20,12 @@ DB_PATH = os.environ.get("AWS_DB_PATH", "")
 
 # ── Teams notification ─────────────────────────────────────────────────────────
 TEAMS_EMAIL       = "28cedabb.CochlearLtd.onmicrosoft.com@emea.teams.ms"
-SMTP_HOST         = "smtp.cochlear.com"
-SMTP_PORT         = 25
-SMTP_FROM         = "aws-finops-agent@cochlear.com"   # adjust if relay requires a valid sender
-SMTP_USE_TLS      = False
-SMTP_USER         = ""   # leave blank — internal relay, no auth
-SMTP_PASSWORD     = ""
+SMTP_HOST         = "smtp.office365.com"
+SMTP_PORT         = 587
+SMTP_FROM         = "elvin.edgar@cochlear.com"
+SMTP_USE_TLS      = True
+SMTP_USER         = "elvin.edgar@cochlear.com"
+SMTP_PASSWORD     = "YOUR_PASSWORD_HERE"   # set via SMTP_PASSWORD env var instead if preferred
 
 # ── Agent behaviour ────────────────────────────────────────────────────────────
 ANOMALY_THRESHOLD_PCT  = 15   # flag workload if week-on-week change exceeds this %
