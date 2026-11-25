@@ -1,7 +1,4 @@
-"""
-Send a weekly FinOps summary to a Microsoft Teams channel via email.
-The Teams channel email relay accepts plain SMTP with no auth on internal networks.
-"""
+"""Send a weekly FinOps summary to a Microsoft Teams channel via email."""
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -43,10 +40,7 @@ def send_weekly_report(markdown_summary: str, subject: str | None = None) -> Non
 
 
 def _markdown_to_html(text: str) -> str:
-    """
-    Minimal markdown → HTML conversion sufficient for Teams email rendering.
-    Handles: headings, bold, horizontal rules, bullet lists, code blocks.
-    """
+    """Minimal markdown → HTML for Teams email rendering."""
     import re
 
     lines   = text.split("\n")
@@ -55,7 +49,6 @@ def _markdown_to_html(text: str) -> str:
     in_code = False
 
     for line in lines:
-        # Code fence
         if line.strip().startswith("```"):
             if in_code:
                 out.append("</pre>")
@@ -73,13 +66,11 @@ def _markdown_to_html(text: str) -> str:
             out.append(line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
             continue
 
-        # Close list if needed
         stripped = line.strip()
         if in_list and not stripped.startswith(("- ", "* ", "• ")):
             out.append("</ul>")
             in_list = False
 
-        # Headings
         if stripped.startswith("### "):
             out.append(f'<h3 style="color:#2B3752;margin:16px 0 6px">{_inline(stripped[4:])}</h3>')
         elif stripped.startswith("## "):
@@ -87,20 +78,16 @@ def _markdown_to_html(text: str) -> str:
                        f'padding-bottom:4px;margin:20px 0 8px">{_inline(stripped[3:])}</h2>')
         elif stripped.startswith("# "):
             out.append(f'<h1 style="color:#2B3752;margin:0 0 12px">{_inline(stripped[2:])}</h1>')
-        # Horizontal rule
         elif stripped in ("---", "***", "___"):
             out.append('<hr style="border:none;border-top:1px solid #ddd;margin:12px 0"/>')
-        # Bullet list
         elif stripped.startswith(("- ", "* ", "• ")):
             if not in_list:
                 out.append('<ul style="margin:6px 0 6px 20px;padding:0">')
                 in_list = True
             item = stripped.lstrip("-*• ").strip()
             out.append(f'<li style="margin:3px 0">{_inline(item)}</li>')
-        # Empty line
         elif stripped == "":
             out.append("<br/>")
-        # Normal paragraph
         else:
             out.append(f'<p style="margin:4px 0">{_inline(stripped)}</p>')
 
@@ -127,12 +114,8 @@ def _markdown_to_html(text: str) -> str:
 def _inline(text: str) -> str:
     """Apply inline markdown: **bold**, `code`, URLs."""
     import re
-    # Bold
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    # Italic
     text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
-    # Inline code
     text = re.sub(r"`(.+?)`", r'<code style="background:#f4f4f4;padding:1px 4px;border-radius:3px">\1</code>', text)
-    # Bare URLs
     text = re.sub(r"(https?://[^\s<]+)", r'<a href="\1">\1</a>', text)
     return text
