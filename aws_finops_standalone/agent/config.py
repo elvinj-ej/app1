@@ -20,14 +20,14 @@ DB_PATH = os.environ.get("AWS_DB_PATH", "")
 
 # ── Teams notification ─────────────────────────────────────────────────────────
 TEAMS_EMAIL       = "28cedabb.CochlearLtd.onmicrosoft.com@emea.teams.ms"
-# smtp.cochlear.com:587 — internal relay with O365 auth (relays to external @emea.teams.ms)
-# Fallback option: smtp.office365.com:587 (requires server IP to be trusted by tenant)
+# smtp.cochlear.com:25 — internal relay, no auth needed once IT adds relay exception for
+# destination 28cedabb.CochlearLtd.onmicrosoft.com@emea.teams.ms from server 172.19.12.10
 SMTP_HOST         = "smtp.cochlear.com"
-SMTP_PORT         = 587
+SMTP_PORT         = 25
 SMTP_FROM         = "eedgar@cochlear.com"
-SMTP_USE_TLS      = True
-SMTP_USER         = "eedgar@cochlear.com"
-SMTP_PASSWORD     = "YOUR_PASSWORD_HERE"   # set via SMTP_PASSWORD env var instead if preferred
+SMTP_USE_TLS      = False
+SMTP_USER         = ""
+SMTP_PASSWORD     = ""
 
 # ── Agent behaviour ────────────────────────────────────────────────────────────
 ANOMALY_THRESHOLD_PCT  = 15   # flag workload if week-on-week change exceeds this %
